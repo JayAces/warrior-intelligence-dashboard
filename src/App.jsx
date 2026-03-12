@@ -72,6 +72,8 @@ const RAW = [
   { id:"2EQBOPD", warriorId:"Vin02-26", submitted:"2026-02-21", crisisStart:"2026-01-24", ongoing:false, pain:3, painCompared:"Better than usual", painLocations:["Arms","Joints"], triggered:["Cold weather exposure","Dehydration (missed water intake)","High stress situation","Physical overexertion"], temp:null, erVisit:"Yes", hospital:"", waitHours:0, triageToTreatment:null, protocolFollowed:"Yes", whyNot:"", treatment:["Prescription pain medication","Hydration","Rest"], admitted:"Yes", outcome72h:null, working:"A little", trackingFor:"Myself", community:"Independent Warrior", age:null, consented:false, notes:"" },
   { id:"2EQ2NlV", warriorId:"ChompChomp", submitted:"2026-02-27", crisisStart:"2026-02-21", ongoing:false, pain:0, painCompared:"Same as usual", painLocations:["Other"], triggered:["Cold weather exposure","Illness (cold, flu, infection)"], temp:36, erVisit:"Yes", hospital:"Mary Bridge Children's Hospital", waitHours:0.25, triageToTreatment:null, protocolFollowed:"Yes", whyNot:"", treatment:["Prescription pain medication","Heating pad","Hydration","Rest"], admitted:"Yes", outcome72h:"Pain resolved — recovered", working:"Well", trackingFor:"Caregiver (child)", community:"Independent Warrior", age:null, consented:false, notes:"Pain went from 8 to 0 over 6 days. Hopefully she can go home tomorrow. Stay strong fam ♡ much love from the PNW." },
   { id:"J9NPxyz", warriorId:"CC12-4838", submitted:"2026-03-06", crisisStart:"2026-02-23", ongoing:false, pain:0, painCompared:"Better than usual", painLocations:["Arms","Neck"], triggered:["Illness (cold, flu, infection)","High stress situation"], temp:60, erVisit:"No", hospital:"", waitHours:0, triageToTreatment:null, protocolFollowed:"No protocol", whyNot:"", treatment:["Prescription pain medication","Over-the-counter pain relief","Hydration","Rest"], admitted:"N/A", outcome72h:null, working:"Well", trackingFor:"Myself", community:"International Warrior", age:50, consented:true, notes:"" },
+  { id:"68Xb9GO", warriorId:"David03-60", submitted:"2026-03-08", crisisStart:"2026-03-07", ongoing:true, pain:6, painCompared:"Same as usual", painLocations:["Arms","Legs","Back"], triggered:["Cold weather exposure","Dehydration (missed water intake)","High stress situation","Illness (cold, flu, infection)"], primaryTriggers:["Dehydration (missed water intake)","Cold weather exposure"], temp:77, predictability:"Some warning signs", erVisit:"No", hospital:"", waitHours:0, triageToTreatment:null, protocolFollowed:"No protocol", whyNot:"", treatment:["Over-the-counter pain relief","Rest","Hydration","Nothing is helping yet"], admitted:"N/A", outcome72h:null, working:"A little", trackingFor:"Myself", community:"International Warrior", age:28, consented:true, notes:"" },
+  { id:"zxpxQAg", warriorId:"Alexis15-3", submitted:"2026-03-08", crisisStart:"2026-03-02", ongoing:true, pain:7, painCompared:"Worse than usual", painLocations:["Chest","Back","Legs","Hips"], triggered:["Cold weather exposure","Menstrual cycle"], primaryTriggers:["Cold weather exposure"], temp:40, predictability:"Came out of nowhere", erVisit:"Yes", hospital:"Virtua in Voorhees NJ", waitHours:0.5, triageToTreatment:1, protocolFollowed:"Yes", whyNot:"", treatment:["Prescription pain medication","Hydration","Rest","Morphine drip"], admitted:"Still in hospital now", outcome72h:null, working:"Moderately", trackingFor:"Caregiver (family member)", community:"Independent Warrior", age:32, consented:true, notes:"Hospital was full — placed in surgery recovery area. 2 blood transfusions this week, hemoglobin dropping to 7.2, continuous low fever, BP unstable when sitting. SC genotype. Second crisis in 2 months. Morphine drip started 3/7. Wants check-in." },
 ];
 
 // ── FUZZY MATCH ───────────────────────────────────────────────────────────────
@@ -217,7 +219,7 @@ function TimelineView(){
         <div style={{fontFamily:"Syne",fontWeight:800,fontSize:24,marginBottom:6,letterSpacing:-.3}}>Your Crisis <span style={{color:C.red}}>Timeline</span></div>
         <div style={{fontSize:14,color:C.muted,marginBottom:26,lineHeight:1.7,maxWidth:560}}>Every crisis you've logged — your triggers, your ER encounters, your patterns — in one place. Enter your Warrior ID to access your data.</div>
         <div style={{display:"flex",gap:10,marginBottom:14}}>
-          <input value={input} onChange={e=>{setInput(e.target.value);if(phase!=="idle")setPhase("idle");}} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="e.g. Tiffani0116 or Damein09-7" style={{flex:1,background:C.surf2,border:`1px solid ${phase==="notfound"?C.red+"50":C.border}`,borderRadius:10,padding:"13px 18px",color:C.text,fontSize:14,transition:"border .2s"}}/>
+          <input value={input} onChange={e=>{setInput(e.target.value);if(phase!=="idle")setPhase("idle");}} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Enter your Warrior ID" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,background:C.surf2,border:`1px solid ${phase==="notfound"?C.red+"50":C.border}`,borderRadius:10,padding:"13px 18px",color:C.text,fontSize:14,transition:"border .2s"}}/>
           <button onClick={search} style={{background:C.red,color:"#fff",border:"none",borderRadius:10,padding:"13px 28px",fontWeight:500,fontSize:14}}>Find Me</button>
         </div>
         <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Warrior ID format: first name + birth month + favorite number. We never store real names. Your data is yours.</div>
@@ -236,39 +238,16 @@ function CommunityView(){
   const violations=allViolations();
   const menstrual=RAW.filter(d=>d.triggered.some(t=>t.includes("Menstrual")));
   const consented=RAW.filter(d=>d.consented);
-  const stillOngoing=RAW.filter(d=>d.ongoing===true);
-  // Outcome gap: admitted vs treated/released
-  const admitted=RAW.filter(d=>typeof d.admitted==="string"&&d.admitted.toLowerCase().includes("admitted")&&!d.admitted.toLowerCase().includes("not"));
-  const released=RAW.filter(d=>typeof d.admitted==="string"&&d.admitted.toLowerCase().includes("treated and released"));
-  const effAdm=admitted.filter(d=>["Well","Moderately"].includes(d.working)).length;
-  const effRel=released.filter(d=>["Well","Moderately"].includes(d.working)).length;
-  const admPct=admitted.length?Math.round(effAdm/admitted.length*100):0;
-  const relPct=released.length?Math.round(effRel/released.length*100):0;
+  const withAge=RAW.filter(d=>d.age);
   return(
     <div className="fade">
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:24}}>
-        <Pill label="Unique Warriors" value={new Set(RAW.map(d=>d.warriorId)).size} accent={C.blue} sub={`${RAW.length} total submissions`}/>
-        <Pill label="Still In Crisis" value={`${Math.round(stillOngoing.length/RAW.length*100)}%`} accent={C.red} sub="At time of report"/>
+        <Pill label="Total Reports" value={RAW.length} accent={C.blue} sub="Dec 2025 – Mar 2026"/>
         <Pill label="Avg Pain" value={avgPain(RAW)} accent={C.red} sub="Across all crises"/>
-        <Pill label="ER Visits" value={erVisits.length} accent={C.amber} sub={`${Math.round(erVisits.length/RAW.length*100)}% of Warriors`}/>
+        <Pill label="ER Visits" value={erVisits.length} accent={C.amber}/>
         <Pill label="Protocol Violations" value={`${Math.round(violations.length/erVisits.length*100)}%`} accent={C.red} sub={`${violations.length} of ${erVisits.length} ER visits`}/>
         <Pill label="Menstrual Trigger" value={`${Math.round(menstrual.length/RAW.length*100)}%`} accent={C.purple} sub={`${menstrual.length} Warriors`}/>
-      </div>
-      <div style={{background:`${C.red}08`,border:`1px solid ${C.red}25`,borderRadius:14,padding:20,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontWeight:700,color:C.red,marginBottom:10,fontSize:15}}>The Outcome Gap</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <div style={{background:C.surf2,borderRadius:10,padding:"16px 18px",borderTop:`3px solid ${C.green}`}}>
-            <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:C.green}}>{admPct}%</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Admitted Warriors report effective care</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4}}>{admitted.length} Warriors admitted</div>
-          </div>
-          <div style={{background:C.surf2,borderRadius:10,padding:"16px 18px",borderTop:`3px solid ${C.red}`}}>
-            <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:C.red}}>{relPct}%</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Treated & released report effective care</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4}}>{released.length} Warriors released</div>
-          </div>
-        </div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.75}}>Warriors who are admitted are <strong style={{color:C.text}}>{released.length&&relPct>0?(admPct/relPct).toFixed(1):2.4}x more likely</strong> to report effective pain management than those treated and released. This gap represents the core failure of SCD emergency care — and the central finding of this dataset.</div>
+        <Pill label="Consented" value={consented.length} accent={C.teal} sub="Under new framework"/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:22}}>
@@ -349,7 +328,7 @@ export default function App(){
             <div style={{paddingTop:20}}>
               <div style={{fontSize:10,letterSpacing:3.5,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Human Intelligence Infrastructure</div>
               <div style={{fontFamily:"Syne",fontWeight:800,fontSize:21,letterSpacing:-.3,marginBottom:2}}>Warrior Intelligence <span style={{color:C.red}}>Dashboard</span></div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:14}}>{RAW.length} crisis reports · {new Set(RAW.map(d=>d.warriorId)).size} unique Warriors · Day 65 · Community-owned · {RAW.filter(d=>d.consented).length} consented</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:14}}>{RAW.length} crisis reports · Dec 2025 – Mar 2026 · Community-owned · {RAW.filter(d=>d.consented).length} consented</div>
             </div>
             <div style={{display:"flex",gap:0}}>{tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",padding:"10px 20px",fontSize:13,fontWeight:tab===t.id?500:400,color:tab===t.id?C.text:C.muted,borderBottom:tab===t.id?`2px solid ${C.red}`:"2px solid transparent",transition:"all .2s"}}>{t.label}</button>))}</div>
           </div>
