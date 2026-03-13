@@ -250,7 +250,7 @@ function PatternMirror({entries}){
   if(insight) lines.push({text:insight, color:C.amber});
   if(hasMenstrual) lines.push({text:"Menstrual cycle is a documented trigger in your data — you identified this before most clinical systems would catch it.", color:C.purple});
   if(violCount>0) lines.push({text:`${violCount} protocol violation${violCount>1?"s":""} on record. Your experience is part of the community evidence base.`, color:C.red});
-  if(avg) lines.push({text:`Your average pain level across submissions: ${avg}/10.`, color:C.muted});
+  // avg pain already shown in pills — omitted from mirror
 
   if(lines.length===0) return null;
 
