@@ -277,6 +277,66 @@ function PatternMirror({entries}){
   );
 }
 
+// ── STABILITY SCORE ──────────────────────────────────────────────────────────
+function StabilityScore({entries}){
+  if(entries.length<2) return null;
+
+  const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
+  const recent=sorted.slice(-3); // last 3 entries
+
+  // Factor 1: Pain trajectory (are recent crises better or worse?)
+  const pains=sorted.map(e=>e.pain).filter(p=>p>0);
+  const firstHalf=pains.slice(0,Math.floor(pains.length/2));
+  const secondHalf=pains.slice(Math.floor(pains.length/2));
+  const avgFirst=firstHalf.length?firstHalf.reduce((a,b)=>a+b,0)/firstHalf.length:5;
+  const avgSecond=secondHalf.length?secondHalf.reduce((a,b)=>a+b,0)/secondHalf.length:5;
+  const painDelta=avgSecond-avgFirst; // positive = getting worse
+
+  // Factor 2: Crisis frequency (days between crises)
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++){
+    gaps.push(days(sorted[i-1].submitted, sorted[i].submitted));
+  }
+  const avgGap=gaps.length?gaps.reduce((a,b)=>a+b,0)/gaps.length:30;
+
+  // Factor 3: Is latest crisis still ongoing?
+  const latestOngoing=sorted[sorted.length-1].ongoing;
+
+  // Factor 4: Recent ER rate
+  const recentERRate=recent.filter(e=>e.erVisit==="Yes").length/recent.length;
+
+  // Score: 0-100, higher = more stable
+  let score=60; // baseline
+  if(painDelta<-1) score+=15; // pain improving
+  else if(painDelta>1) score-=15; // pain worsening
+  if(avgGap>21) score+=15; // crises spreading out
+  else if(avgGap<7) score-=15; // crises clustering
+  if(!latestOngoing) score+=10; // last crisis resolved
+  else score-=10; // still in crisis
+  if(recentERRate<0.33) score+=10; // managing more at home
+  else if(recentERRate>0.66) score-=10; // frequent ER
+
+  score=Math.max(10,Math.min(95,score));
+
+  const band=score>=65?{label:"Stable",color:C.green,bg:`${C.green}0c`,border:`${C.green}25`,msg:"Your recent data shows improving patterns. Crises are becoming less frequent or less severe."}
+    :score>=40?{label:"Watchful",color:C.amber,bg:`${C.amber}0c`,border:`${C.amber}25`,msg:"Your pattern shows active stress. Pay attention to your known triggers in the coming days."}
+    :{label:"High Load",color:C.red,bg:`${C.red}0c`,border:`${C.red}25`,msg:"Your recent data reflects a high-load period. This is not a failure — it is information."};
+
+  return(
+    <div className="fade" style={{background:band.bg,border:`1px solid ${band.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+      <div style={{flexShrink:0,textAlign:"center"}}>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:band.color,lineHeight:1}}>{score}</div>
+        <div style={{fontSize:9,letterSpacing:1.5,color:band.color,textTransform:"uppercase",marginTop:2}}>Stability</div>
+      </div>
+      <div style={{width:1,height:44,background:`${band.color}30`,flexShrink:0}}/>
+      <div>
+        <div style={{fontFamily:"Syne",fontWeight:700,fontSize:13,color:band.color,marginBottom:3}}>{band.label}</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",lineHeight:1.6}}>{band.msg}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
   const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
@@ -301,6 +361,7 @@ function WarriorProfile({entries,onReset}){
             {violCount>0&&<Pill label="Violations" value={violCount} accent={C.red}/>}
           </div>
         </div>
+        <StabilityScore entries={entries}/>
         <PatternMirror entries={entries}/>
       </div>
       <div style={{fontSize:10,letterSpacing:2.5,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Crisis Timeline — oldest first</div>
