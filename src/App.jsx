@@ -207,6 +207,76 @@ function Entry({e,isLast}){
   );
 }
 
+// ── PATTERN MIRROR ───────────────────────────────────────────────────────────
+function PatternMirror({entries}){
+  if(entries.length<1) return null;
+
+  // Build trigger combination frequency
+  const combos={};
+  entries.forEach(e=>{
+    const triggers=e.triggered||[];
+    if(triggers.length<2){
+      // Single trigger
+      const key=triggers[0];
+      if(key){combos[key]=(combos[key]||0)+1;}
+    } else {
+      // All pairs
+      for(let i=0;i<triggers.length;i++){
+        for(let j=i+1;j<triggers.length;j++){
+          const pair=[TS[triggers[i]]||triggers[i],TS[triggers[j]]||triggers[j]].sort().join(" + ");
+          combos[pair]=(combos[pair]||0)+1;
+        }
+      }
+    }
+  });
+
+  const sorted=Object.entries(combos).sort((a,b)=>b[1]-a[1]);
+  const topCombo=sorted[0];
+  const hasMenstrual=entries.some(e=>e.triggered&&e.triggered.some(t=>t.includes("Menstrual")));
+  const violCount=entries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team")))).length;
+  const avgP=entries.map(e=>e.pain).filter(p=>p>0);
+  const avg=avgP.length?(avgP.reduce((a,b)=>a+b,0)/avgP.length).toFixed(1):null;
+
+  // Build the insight sentence
+  let insight="";
+  if(topCombo && topCombo[1]>1){
+    const pct=Math.round(topCombo[1]/entries.length*100);
+    insight=`${topCombo[0]} appeared together in ${pct}% of your crises.`;
+  } else if(topCombo){
+    insight=`Your most consistent trigger pattern: ${topCombo[0]}.`;
+  }
+
+  const lines=[];
+  if(insight) lines.push({text:insight, color:C.amber});
+  if(hasMenstrual) lines.push({text:"Menstrual cycle is a documented trigger in your data — you identified this before most clinical systems would catch it.", color:C.purple});
+  if(violCount>0) lines.push({text:`${violCount} protocol violation${violCount>1?"s":""} on record. Your experience is part of the community evidence base.`, color:C.red});
+  if(avg) lines.push({text:`Your average pain level across submissions: ${avg}/10.`, color:C.muted});
+
+  if(lines.length===0) return null;
+
+  return(
+    <div className="fade" style={{background:`linear-gradient(135deg,${C.surf2},${C.surf})`,border:`1px solid ${C.amber}30`,borderRadius:14,padding:24,marginBottom:20,position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.amber},${C.purple})`}}/>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:32,height:32,borderRadius:"50%",background:`${C.amber}18`,border:`1px solid ${C.amber}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>◈</div>
+        <div>
+          <div style={{fontFamily:"Syne",fontWeight:700,fontSize:13,color:C.amber,letterSpacing:.5}}>PATTERN MIRROR</div>
+          <div style={{fontSize:11,color:C.muted}}>What your data is telling you</div>
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {lines.map((l,i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{color:l.color,fontSize:14,marginTop:1,flexShrink:0}}>→</span>
+            <span style={{fontSize:13,lineHeight:1.7,color:"rgba(255,255,255,0.82)"}}><span style={{color:l.color,fontWeight:500}}>{l.text.split(" ")[0]+( l.text.split(" ")[1]?" "+l.text.split(" ")[1]:"")}</span>{" "+l.text.split(" ").slice(2).join(" ")}</span>
+          </div>
+        ))}
+      </div>
+      {entries.length===1&&<div style={{marginTop:12,fontSize:11,color:C.muted,fontStyle:"italic"}}>Submit more entries to unlock deeper pattern analysis.</div>}
+    </div>
+  );
+}
+
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
   const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
@@ -231,7 +301,7 @@ function WarriorProfile({entries,onReset}){
             {violCount>0&&<Pill label="Violations" value={violCount} accent={C.red}/>}
           </div>
         </div>
-        {entries.length>1&&<div style={{background:`${C.blue}0a`,border:`1px solid ${C.blue}20`,borderRadius:10,padding:"14px 18px"}}><div style={{fontSize:10,letterSpacing:2,color:C.blue,textTransform:"uppercase",marginBottom:5}}>Your Pattern Intelligence</div><div style={{fontSize:13,lineHeight:1.8,color:"rgba(255,255,255,0.72)"}}>{topT.length>0&&<>Your most consistent triggers: <strong style={{color:C.text}}>{topT.join(", ")}</strong>. </>}{hasMenstrual&&<span style={{color:C.purple}}>Menstrual cycle is a recurring trigger for you — community data identified this pattern in under 10 days, demonstrating the speed of real-time lived-experience intelligence. </span>}{violCount>0&&<span style={{color:C.red}}>You have {violCount} documented protocol violation{violCount>1?"s":""} on record — this is evidence that can support advocacy.</span>}</div></div>}
+        <PatternMirror entries={entries}/>
       </div>
       <div style={{fontSize:10,letterSpacing:2.5,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Crisis Timeline — oldest first</div>
       {sorted.map((e,i)=><Entry key={e.id} e={e} isLast={i===sorted.length-1}/>)}
