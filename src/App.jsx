@@ -1,4 +1,45 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const SUPABASE_URL = "https://aedhhhnsfspodmbxcedy.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGhoaG5zZnNwb2RtYnhjZWR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NDQxMzcsImV4cCI6MjA4NzQyMDEzN30.7izgMmHeGYd4-aPMjocvNz8ubBXHgWZVlbmksi9QqYY";
+
+async function fetchWarriorData() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/crisis_entries?select=*&order=submitted_at.asc&warrior_id=neq.test_one`,
+    { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+  );
+  if (!res.ok) throw new Error("Failed to fetch");
+  const rows = await res.json();
+  return rows.map(r => ({
+    id: r.submission_id,
+    warriorId: r.warrior_id || "",
+    submitted: r.submitted_at ? r.submitted_at.slice(0,10) : "",
+    crisisStart: r.crisis_start || "",
+    ongoing: r.ongoing === true || r.ongoing === "Yes, still ongoing",
+    pain: Number(r.pain_level) || 0,
+    painCompared: r.pain_compared || "",
+    painLocations: r.pain_locations ? r.pain_locations.split(", ").filter(Boolean) : [],
+    triggered: r.triggered_by ? r.triggered_by.split(", ").filter(Boolean) : [],
+    primaryTriggers: r.primary_triggers ? r.primary_triggers.split(", ").filter(Boolean) : [],
+    predictability: r.predictability || "",
+    temp: r.temperature ? parseFloat(r.temperature) : null,
+    erVisit: r.er_visit || "",
+    hospital: r.hospital || "",
+    waitHours: r.wait_hours ? parseFloat(r.wait_hours) : 0,
+    triageToTreatment: r.triage_to_treatment_hours ? parseFloat(r.triage_to_treatment_hours) : null,
+    protocolFollowed: r.protocol_followed || "",
+    whyNot: r.why_not_followed || "",
+    treatment: r.treatment ? r.treatment.split(", ").filter(Boolean) : [],
+    admitted: r.admitted || "",
+    outcome72h: r.outcome_72h || null,
+    working: r.treatment_working || "",
+    trackingFor: r.tracking_for || "",
+    community: r.community || "",
+    age: r.age ? Number(r.age) : null,
+    consented: r.consent === true || r.consent === "true",
+    notes: r.notes || "",
+  }));
+}
 
 const RAW = [
   { id:"RGep70p", warriorId:"Jacob10-22194", submitted:"2025-12-31", crisisStart:"2025-11-02", ongoing:false, pain:10, painCompared:"Same as usual", painLocations:["Joints"], triggered:["Illness (cold, flu, infection)"], temp:49, erVisit:"Yes", hospital:"Memorial Hermann", waitHours:4, triageToTreatment:null, protocolFollowed:"No", whyNot:"", treatment:["Prescription pain medication"], admitted:"N/A", outcome72h:null, working:"A little", trackingFor:"Myself", community:"Other CBO", age:null, consented:false, notes:"" },
@@ -318,6 +359,20 @@ function AccountabilityView(){
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App(){
   const [tab,setTab]=useState("timeline");
+  const [liveData,setLiveData]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    fetchWarriorData()
+      .then(data=>{ setLiveData(data); setLoading(false); })
+      .catch(()=>{ setLiveData(RAW); setLoading(false); });
+  },[]);
+
+  const data = liveData || RAW;
+  // Inject live data into global RAW reference used by child components
+  RAW.length = 0;
+  data.forEach(d => RAW.push(d));
+
   const tabs=[{id:"timeline",label:"My Timeline"},{id:"community",label:"Community Patterns"},{id:"accountability",label:"ER Accountability"}];
   return(
     <>
@@ -328,15 +383,19 @@ export default function App(){
             <div style={{paddingTop:20}}>
               <div style={{fontSize:10,letterSpacing:3.5,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Human Intelligence Infrastructure</div>
               <div style={{fontFamily:"Syne",fontWeight:800,fontSize:21,letterSpacing:-.3,marginBottom:2}}>Warrior Intelligence <span style={{color:C.red}}>Dashboard</span></div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:14}}>{RAW.length} crisis reports · Dec 2025 – Mar 2026 · Community-owned · {RAW.filter(d=>d.consented).length} consented</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:14}}>
+                {loading ? "Loading live data..." : `${data.length} crisis reports · Dec 2025 – present · Community-owned · ${data.filter(d=>d.consented).length} consented`}
+                {!loading && <span className="live" style={{marginLeft:8,color:C.teal,fontSize:10}}>● LIVE</span>}
+              </div>
             </div>
             <div style={{display:"flex",gap:0}}>{tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",padding:"10px 20px",fontSize:13,fontWeight:tab===t.id?500:400,color:tab===t.id?C.text:C.muted,borderBottom:tab===t.id?`2px solid ${C.red}`:"2px solid transparent",transition:"all .2s"}}>{t.label}</button>))}</div>
           </div>
         </div>
         <div style={{maxWidth:860,margin:"0 auto",padding:"28px 24px"}}>
-          {tab==="timeline"&&<TimelineView/>}
-          {tab==="community"&&<CommunityView/>}
-          {tab==="accountability"&&<AccountabilityView/>}
+          {loading && <div style={{textAlign:"center",paddingTop:80,color:C.muted,fontSize:14}}>Loading Warrior data...</div>}
+          {!loading && tab==="timeline"&&<TimelineView/>}
+          {!loading && tab==="community"&&<CommunityView/>}
+          {!loading && tab==="accountability"&&<AccountabilityView/>}
         </div>
       </div>
     </>
