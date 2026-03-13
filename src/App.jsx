@@ -5,7 +5,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 async function fetchWarriorData() {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/crisis_entries?select=*&order=submitted_at.asc&warrior_id=neq.test_one`,
+    `${SUPABASE_URL}/rest/v1/public_crisis_data?select=*&order=submitted_at.asc&warrior_id=neq.test_one`,
     { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
   );
   if (!res.ok) throw new Error("Failed to fetch");
