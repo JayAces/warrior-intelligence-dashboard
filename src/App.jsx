@@ -142,6 +142,7 @@ function findMatches(query){
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const TS={"Cold weather exposure":"Cold Weather","High stress situation":"High Stress","Lack of sleep":"Lack of Sleep","Dehydration (missed water intake)":"Dehydration","Menstrual cycle":"Menstrual Cycle","Illness (cold, flu, infection)":"Illness/Infection","Physical overexertion":"Overexertion","Changed altitude/air pressure":"Altitude/Pressure","Skipped medication":"Skipped Medication"};
 const avgPain=e=>{const v=e.map(x=>x.pain).filter(p=>p>0);return v.length?(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1):"—";};
+const normPC=s=>{if(!s)return s;return s.replace(/Worse thn usual/i,"Worse than usual").replace(/Better thn usual/i,"Better than usual");}; 
 const countT=entries=>{const c={};entries.forEach(e=>e.triggered.forEach(t=>{const s=TS[t]||t;c[s]=(c[s]||0)+1;}));return Object.entries(c).sort((a,b)=>b[1]-a[1]);};
 const painCol=p=>p>=8?"#e85555":p>=5?"#f0a500":"#4ade80";
 const days=(a,b)=>Math.round((new Date(b)-new Date(a))/(864e5));
@@ -354,17 +355,21 @@ function StabilityScore({entries}){
   if(recentERRate<0.33) score+=10; // managing more at home
   else if(recentERRate>0.66) score-=10; // frequent ER
 
-  score=Math.max(10,Math.min(95,score));
-
-  const band=score>=65?{label:"Stable",color:C.green,bg:`${C.green}0c`,border:`${C.green}25`,msg:"Your recent data shows improving patterns. Crises are becoming less frequent or less severe."}
-    :score>=40?{label:"Watchful",color:C.amber,bg:`${C.amber}0c`,border:`${C.amber}25`,msg:"Your pattern shows active stress. Pay attention to your known triggers in the coming days."}
-    :{label:"High Load",color:C.red,bg:`${C.red}0c`,border:`${C.red}25`,msg:"Your recent data reflects a high-load period. This is not a failure — it is information."};
-
   // Stability Window: days since last submission + longest gap
   const lastSubmitted=sorted[sorted.length-1].submitted;
   const today=new Date().toISOString().slice(0,10);
   const daysSinceLast=days(lastSubmitted,today);
   const longestGap=gaps.length?Math.max(...gaps):0;
+
+  // Bonus: if last crisis is resolved AND long gap, push toward stable
+  if(!latestOngoing && daysSinceLast>30) score+=20;
+  else if(!latestOngoing && daysSinceLast>14) score+=10;
+
+  score=Math.max(10,Math.min(95,score));
+
+  const band=score>=65?{label:"Stable",color:C.green,bg:`${C.green}0c`,border:`${C.green}25`,msg:"Your recent data shows improving patterns. Crises are becoming less frequent or less severe."}
+    :score>=40?{label:"Watchful",color:C.amber,bg:`${C.amber}0c`,border:`${C.amber}25`,msg:"Your pattern shows active stress. Pay attention to your known triggers in the coming days."}
+    :{label:"High Load",color:C.red,bg:`${C.red}0c`,border:`${C.red}25`,msg:"Your recent data reflects a high-load period. This is not a failure — it is information."};
 
   return(
     <div className="fade" style={{background:band.bg,border:`1px solid ${band.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16}}>
