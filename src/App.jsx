@@ -256,6 +256,11 @@ function PatternMirror({entries}){
   lines.push({text:"Your submissions are contributing to: community crisis tracking, ER accountability reporting, and trigger pattern detection.", color:C.teal, isContrib:true});
   // avg pain already shown in pills — omitted from mirror
 
+  // Community comparison — locate Warrior inside the larger pattern
+  const communityTriggers={"Cold Weather":74,"High Stress":51,"Lack of Sleep":45,"Dehydration":35,"Menstrual Cycle":23,"Illness/Infection":31,"Overexertion":28};
+  const warriorTopTrigger=topCombo?topCombo[0].split(" + ")[0].trim():null;
+  const communityPct=warriorTopTrigger?communityTriggers[warriorTopTrigger]:null;
+
   if(lines.length===0) return null;
 
   return(
@@ -272,7 +277,7 @@ function PatternMirror({entries}){
         {lines.map((l,i)=>(
           l.isContrib
           ? <div key={i} style={{marginTop:4,paddingTop:12,borderTop:`1px solid rgba(255,255,255,0.06)`,fontSize:11,color:C.teal,lineHeight:1.7,letterSpacing:.2}}>
-              <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6,opacity:.7}}>Your data is working</span>
+              <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6,opacity:.7}}>Your data is working —</span>
               {l.text.replace("Your submissions are contributing to: ","")}
             </div>
           : <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -282,6 +287,30 @@ function PatternMirror({entries}){
         ))}
       </div>
       {entries.length===1&&<div style={{marginTop:12,fontSize:11,color:C.muted,fontStyle:"italic"}}>Submit more entries to unlock deeper pattern analysis.</div>}
+      {communityPct&&entries.length>1&&(
+        <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid rgba(255,255,255,0.06)`}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:C.muted,marginBottom:8}}>You + The Community</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{fontSize:11,color:C.text,width:130,flexShrink:0}}>Your reports</div>
+              <div style={{flex:1,height:6,borderRadius:3,background:"rgba(255,255,255,0.06)",overflow:"hidden"}}>
+                <div style={{height:"100%",borderRadius:3,background:C.amber,width:"100%"}}/>
+              </div>
+              <div style={{fontSize:11,color:C.amber,width:32,textAlign:"right",flexShrink:0}}>100%</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{fontSize:11,color:C.muted,width:130,flexShrink:0}}>Community</div>
+              <div style={{flex:1,height:6,borderRadius:3,background:"rgba(255,255,255,0.06)",overflow:"hidden"}}>
+                <div style={{height:"100%",borderRadius:3,background:C.teal,width:`${communityPct}%`,transition:"width 1s ease"}}/>
+              </div>
+              <div style={{fontSize:11,color:C.teal,width:32,textAlign:"right",flexShrink:0}}>{communityPct}%</div>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:C.muted,marginTop:8,lineHeight:1.6}}>
+            <span style={{color:C.amber}}>{warriorTopTrigger}</span> is your top trigger — and {communityPct}% of Warriors in the community report the same.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
