@@ -387,6 +387,152 @@ function StabilityScore({entries}){
   );
 }
 
+// ── CLINICAL BRIEF GENERATOR ─────────────────────────────────────────────────
+function generateBrief(entries){
+  const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
+  const latest=sorted[sorted.length-1];
+  const topTriggers=countT(entries).slice(0,3).map(([t])=>t);
+  const erVisits=entries.filter(e=>e.erVisit==="Yes");
+  const violations=entries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"))));
+  const avgP=entries.map(e=>e.pain).filter(p=>p>0);
+  const avg=avgP.length?(avgP.reduce((a,b)=>a+b,0)/avgP.length).toFixed(1):"—";
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++) gaps.push(days(sorted[i-1].submitted,sorted[i].submitted));
+  const longestGap=gaps.length?Math.max(...gaps):0;
+  const today=new Date().toISOString().slice(0,10);
+  const daysSinceLast=days(sorted[sorted.length-1].submitted,today);
+
+  // Stability band
+  const pains=sorted.map(e=>e.pain).filter(p=>p>0);
+  const firstHalf=pains.slice(0,Math.floor(pains.length/2));
+  const secondHalf=pains.slice(Math.floor(pains.length/2));
+  const avgFirst=firstHalf.length?firstHalf.reduce((a,b)=>a+b,0)/firstHalf.length:5;
+  const avgSecond=secondHalf.length?secondHalf.reduce((a,b)=>a+b,0)/secondHalf.length:5;
+  const painDelta=avgSecond-avgFirst;
+  const avgGap=gaps.length?gaps.reduce((a,b)=>a+b,0)/gaps.length:30;
+  const recentERRate=entries.slice(-3).filter(e=>e.erVisit==="Yes").length/Math.min(entries.length,3);
+  let score=60;
+  if(painDelta<-1)score+=15;else if(painDelta>1)score-=15;
+  if(avgGap>21)score+=15;else if(avgGap<7)score-=15;
+  if(!latest.ongoing)score+=10;else score-=10;
+  if(recentERRate<0.33)score+=10;else if(recentERRate>0.66)score-=10;
+  score=Math.max(10,Math.min(95,score));
+  const stabilityLabel=score>=65?"STABLE":score>=40?"WATCHFUL":"HIGH LOAD";
+  const stabilityColor=score>=65?"#22c55e":score>=40?"#f59e0b":"#ef4444";
+
+  const erHistoryRows=erVisits.map(e=>{
+    const viol=e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"));
+    return `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.submitted}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.hospital||"—"}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.waitHours?e.waitHours+"h wait":""}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:${viol?"#dc2626":"#16a34a"};">${viol?"✗ Protocol NOT followed":"✓ Protocol followed"}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.admitted&&e.admitted!=="N/A"?e.admitted:""}</td>
+    </tr>`;
+  }).join("");
+
+  const html=`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Hii Clinical Intelligence Brief — ${entries[0].warriorId}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#111;background:#fff;padding:32px;max-width:780px;margin:0 auto;}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #990000;padding-bottom:16px;margin-bottom:24px;}
+  .brand{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#666;margin-bottom:4px;}
+  .title{font-size:22px;font-weight:800;color:#0f0f0f;letter-spacing:-0.3px;}
+  .subtitle{font-size:13px;color:#555;margin-top:3px;}
+  .status-badge{padding:8px 18px;border-radius:6px;font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;background:${stabilityColor}18;color:${stabilityColor};border:1.5px solid ${stabilityColor}50;text-align:center;}
+  .section{margin-bottom:22px;}
+  .section-header{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#990000;font-weight:700;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #f3e8e8;}
+  .row{display:flex;gap:8px;margin-bottom:6px;}
+  .label{font-size:11px;color:#666;min-width:160px;flex-shrink:0;}
+  .value{font-size:12px;color:#111;font-weight:500;}
+  .trigger-chip{display:inline-block;padding:3px 10px;border-radius:12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;margin-right:5px;margin-bottom:4px;}
+  table{width:100%;border-collapse:collapse;margin-top:6px;}
+  th{background:#f9fafb;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#666;padding:7px 10px;text-align:left;border-bottom:2px solid #e5e7eb;}
+  .safeguard-note{background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:14px 16px;font-size:12px;color:#7f1d1d;line-height:1.7;}
+  .footer{margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:flex-end;}
+  .footer-left{font-size:10px;color:#999;line-height:1.7;}
+  .footer-right{font-size:10px;color:#999;text-align:right;}
+  .tagline{font-size:11px;color:#C1A004;font-weight:600;letter-spacing:.5px;}
+  @media print{body{padding:20px;} .no-print{display:none;}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="brand">Human Intelligence Infrastructure · Hii Clinical Brief</div>
+    <div class="title">Clinical Intelligence Brief</div>
+    <div class="subtitle">Warrior ID: ${entries[0].warriorId} &nbsp;·&nbsp; Generated: ${today} &nbsp;·&nbsp; ${entries.length} crisis report${entries.length!==1?"s":""} on record</div>
+  </div>
+  <div class="status-badge">${stabilityLabel}</div>
+</div>
+
+<div class="section">
+  <div class="section-header">◈ Compass — Longitudinal Orientation</div>
+  <div class="row"><span class="label">Crisis reports on record</span><span class="value">${entries.length}</span></div>
+  <div class="row"><span class="label">Average pain level</span><span class="value">${avg}/10</span></div>
+  <div class="row"><span class="label">Days since last report</span><span class="value">${daysSinceLast} days</span></div>
+  ${longestGap>0?`<div class="row"><span class="label">Longest crisis-free window</span><span class="value">${longestGap} days</span></div>`:""}
+  <div class="row"><span class="label">Current crisis status</span><span class="value">${latest.ongoing?"Active — crisis ongoing as of last report":"Resolved as of last report"}</span></div>
+  <div class="row"><span class="label">Tracking for</span><span class="value">${entries[0].trackingFor}</span></div>
+</div>
+
+<div class="section">
+  <div class="section-header">◈ Loop — Verified Trigger Patterns</div>
+  <div class="row"><span class="label">Primary triggers identified</span><span class="value">${topTriggers.join(", ")||"—"}</span></div>
+  <div style="margin-top:8px;">${topTriggers.map(t=>`<span class="trigger-chip">${t}</span>`).join("")}</div>
+  ${latest.treatment.length?`<div class="row" style="margin-top:10px;"><span class="label">Current treatment</span><span class="value">${latest.treatment.join(", ")}</span></div>`:""}
+  ${latest.working?`<div class="row"><span class="label">Treatment effectiveness</span><span class="value">${latest.working}</span></div>`:""}
+</div>
+
+<div class="section">
+  <div class="section-header">◈ Safeguard — Protocol & Accountability History</div>
+  ${erVisits.length?`
+  <table>
+    <thead><tr>
+      <th>Date</th><th>Hospital</th><th>Wait</th><th>Protocol</th><th>Admission</th>
+    </tr></thead>
+    <tbody>${erHistoryRows}</tbody>
+  </table>`:`<div style="font-size:12px;color:#666;padding:8px 0;">No ER visits on record for this Warrior.</div>`}
+  ${violations.length?`
+  <div class="safeguard-note" style="margin-top:12px;">
+    <strong>${violations.length} documented protocol violation${violations.length!==1?"s":""} on record.</strong> This Warrior's experience is part of the community evidence base maintained by Sickle Cell Warriors of Buffalo. Protocol violations are logged for quality improvement reporting to hospital administrators and health equity partners.
+  </div>`:""}
+</div>
+
+<div class="section">
+  <div class="section-header">◈ Clinical Request</div>
+  <div style="font-size:13px;line-height:1.8;color:#222;">
+    This Warrior has documented expertise in managing their own crisis trajectory. Home management has been attempted. Clinical intervention is requested. Please initiate established Sickle Cell pain protocol immediately.<br/><br/>
+    <strong>Community data indicates Warriors who are admitted report outcomes 2.5× better than those treated and released.</strong> Early admission and protocol adherence represent the highest-value clinical decision for this patient.
+  </div>
+</div>
+
+<div class="footer">
+  <div class="footer-left">
+    Warrior Intelligence Project · Sickle Cell Warriors of Buffalo<br/>
+    info@kindredcompassholdings.com · 716-818-2338<br/>
+    warrior-intelligence-dashboard.vercel.app
+  </div>
+  <div class="footer-right">
+    <div class="tagline">Our Pain. Our Data. Our Power.</div>
+    <div style="margin-top:3px;">© ${new Date().getFullYear()} Jason Robert Moore. All Rights Reserved.<br/>Human Intelligence Infrastructure (Hii) Framework.</div>
+  </div>
+</div>
+
+</body>
+</html>`;
+
+  const win=window.open("","_blank");
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>win.print(),500);
+}
+
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
   const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
@@ -397,7 +543,10 @@ function WarriorProfile({entries,onReset}){
   const spanDays=entries.length>1?days(sorted[0].submitted,sorted[sorted.length-1].submitted):0;
   return(
     <div className="fade">
-      <button onClick={onReset} style={{background:"none",border:"none",color:C.muted,fontSize:13,marginBottom:18,display:"flex",alignItems:"center",gap:6,padding:0}}>← Search again</button>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+        <button onClick={onReset} style={{background:"none",border:"none",color:C.muted,fontSize:13,display:"flex",alignItems:"center",gap:6,padding:0}}>← Search again</button>
+        <button onClick={()=>generateBrief(entries)} style={{background:"none",border:`1px solid ${C.amber}50`,borderRadius:8,padding:"7px 16px",color:C.amber,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⬇ Export Clinical Brief</button>
+      </div>
       <div style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:24,marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:14,marginBottom:20}}>
           <div>
