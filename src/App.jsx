@@ -277,7 +277,7 @@ function PatternMirror({entries}){
         {lines.map((l,i)=>(
           l.isContrib
           ? <div key={i} style={{marginTop:4,paddingTop:12,borderTop:`1px solid rgba(255,255,255,0.06)`,fontSize:11,color:C.teal,lineHeight:1.7,letterSpacing:.2}}>
-              <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6,opacity:.7}}>Your data is working —</span>
+              <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6,opacity:.7}}>Your data is already working —</span>
               {l.text.replace("Your submissions are contributing to: ","")}
             </div>
           : <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
