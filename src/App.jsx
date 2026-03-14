@@ -241,15 +241,19 @@ function PatternMirror({entries}){
   let insight="";
   if(topCombo && topCombo[1]>1){
     const pct=Math.round(topCombo[1]/entries.length*100);
-    insight=`${topCombo[0]} appeared together in ${pct}% of your crises.`;
+    const count=topCombo[1];
+    const total=entries.length;
+    insight=`${topCombo[0]} appeared together in ${count} of your ${total} report${total!==1?"s":""} (${pct}%).`;
   } else if(topCombo){
-    insight=`Your most consistent trigger pattern: ${topCombo[0]}.`;
+    insight=`Your most consistent trigger: ${topCombo[0]} — appeared in every report you've submitted.`;
   }
 
   const lines=[];
   if(insight) lines.push({text:insight, color:C.amber});
   if(hasMenstrual) lines.push({text:"Menstrual cycle is a documented trigger in your data — you identified this before most clinical systems would catch it.", color:C.purple});
   if(violCount>0) lines.push({text:`${violCount} protocol violation${violCount>1?"s":""} on record. Your experience is part of the community evidence base.`, color:C.red});
+  // Contribution visibility — what their data is doing
+  lines.push({text:"Your submissions are contributing to: community crisis tracking, ER accountability reporting, and trigger pattern detection.", color:C.teal, isContrib:true});
   // avg pain already shown in pills — omitted from mirror
 
   if(lines.length===0) return null;
@@ -266,10 +270,15 @@ function PatternMirror({entries}){
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {lines.map((l,i)=>(
-          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-            <span style={{color:l.color,fontSize:14,marginTop:1,flexShrink:0}}>→</span>
-            <span style={{fontSize:13,lineHeight:1.7,color:"rgba(255,255,255,0.82)"}}><span style={{color:l.color,fontWeight:500}}>{l.text.split(" ")[0]+( l.text.split(" ")[1]?" "+l.text.split(" ")[1]:"")}</span>{" "+l.text.split(" ").slice(2).join(" ")}</span>
-          </div>
+          l.isContrib
+          ? <div key={i} style={{marginTop:4,paddingTop:12,borderTop:`1px solid rgba(255,255,255,0.06)`,fontSize:11,color:C.teal,lineHeight:1.7,letterSpacing:.2}}>
+              <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6,opacity:.7}}>Your data is working</span>
+              {l.text.replace("Your submissions are contributing to: ","")}
+            </div>
+          : <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+              <span style={{color:l.color,fontSize:14,marginTop:1,flexShrink:0}}>→</span>
+              <span style={{fontSize:13,lineHeight:1.7,color:"rgba(255,255,255,0.82)"}}><span style={{color:l.color,fontWeight:500}}>{l.text.split(" ")[0]+( l.text.split(" ")[1]?" "+l.text.split(" ")[1]:"")}</span>{" "+l.text.split(" ").slice(2).join(" ")}</span>
+            </div>
         ))}
       </div>
       {entries.length===1&&<div style={{marginTop:12,fontSize:11,color:C.muted,fontStyle:"italic"}}>Submit more entries to unlock deeper pattern analysis.</div>}
@@ -322,17 +331,29 @@ function StabilityScore({entries}){
     :score>=40?{label:"Watchful",color:C.amber,bg:`${C.amber}0c`,border:`${C.amber}25`,msg:"Your pattern shows active stress. Pay attention to your known triggers in the coming days."}
     :{label:"High Load",color:C.red,bg:`${C.red}0c`,border:`${C.red}25`,msg:"Your recent data reflects a high-load period. This is not a failure — it is information."};
 
+  // Stability Window: days since last submission + longest gap
+  const lastSubmitted=sorted[sorted.length-1].submitted;
+  const today=new Date().toISOString().slice(0,10);
+  const daysSinceLast=days(lastSubmitted,today);
+  const longestGap=gaps.length?Math.max(...gaps):0;
+
   return(
-    <div className="fade" style={{background:band.bg,border:`1px solid ${band.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-      <div style={{flexShrink:0,textAlign:"center"}}>
-        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:band.color,lineHeight:1}}>{score}</div>
-        <div style={{fontSize:9,letterSpacing:1.5,color:band.color,textTransform:"uppercase",marginTop:2}}>Stability</div>
+    <div className="fade" style={{background:band.bg,border:`1px solid ${band.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:longestGap>0?10:0}}>
+        <div style={{flexShrink:0,textAlign:"center",minWidth:56}}>
+          <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:band.color,lineHeight:1}}>{daysSinceLast}</div>
+          <div style={{fontSize:9,letterSpacing:1.5,color:band.color,textTransform:"uppercase",marginTop:2}}>days since</div>
+          <div style={{fontSize:9,letterSpacing:1,color:band.color,opacity:.7}}>last report</div>
+        </div>
+        <div style={{width:1,height:44,background:`${band.color}30`,flexShrink:0}}/>
+        <div>
+          <div style={{fontFamily:"Syne",fontWeight:700,fontSize:13,color:band.color,marginBottom:3}}>{band.label}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",lineHeight:1.6}}>{band.msg}</div>
+        </div>
       </div>
-      <div style={{width:1,height:44,background:`${band.color}30`,flexShrink:0}}/>
-      <div>
-        <div style={{fontFamily:"Syne",fontWeight:700,fontSize:13,color:band.color,marginBottom:3}}>{band.label}</div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",lineHeight:1.6}}>{band.msg}</div>
-      </div>
+      {longestGap>0&&<div style={{fontSize:11,color:C.muted,borderTop:`1px solid rgba(255,255,255,0.06)`,paddingTop:8}}>
+        Your longest crisis-free window: <span style={{color:band.color,fontWeight:500}}>{longestGap} day{longestGap!==1?"s":""}</span>
+      </div>}
     </div>
   );
 }
