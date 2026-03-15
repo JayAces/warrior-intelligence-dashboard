@@ -167,7 +167,7 @@ const Tag=({label,color})=>(<span style={{display:"inline-block",fontSize:11,pad
 const Pill=({label,value,accent,sub})=>(<div style={{textAlign:"center",padding:"14px 16px",background:C.surf2,borderRadius:12,border:`1px solid ${C.border}`,borderTop:`2px solid ${accent}`}}><div style={{fontSize:28,fontFamily:"Syne",fontWeight:800,color:accent,lineHeight:1}}>{value}</div><div style={{fontSize:11,color:C.muted,marginTop:3,letterSpacing:.4}}>{label}</div>{sub&&<div style={{fontSize:10,color:C.muted,marginTop:1}}>{sub}</div>}</div>);
 
 // ── TIMELINE ENTRY ────────────────────────────────────────────────────────────
-function Entry({e,isLast}){
+function Entry({e,isLast,onResolve}){
   const pc=painCol(e.pain);
   const viol=e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team")));
   const dur=days(e.crisisStart,e.submitted);
@@ -202,6 +202,13 @@ function Entry({e,isLast}){
           {e.erVisit==="Yes"&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:viol?`${C.red}0c`:`${C.green}0a`,border:`1px solid ${viol?C.red+"28":C.green+"25"}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:4}}><span style={{fontSize:13,fontWeight:500}}>🏥 {e.hospital||"ER Visit"}</span>{e.waitHours>0&&<span style={{fontSize:11,color:C.muted}}>{e.waitHours}h wait</span>}</div><div style={{fontSize:12,color:viol?C.red:C.green}}>{viol?`✗ Protocol NOT followed${e.whyNot?` — ${e.whyNot}`:""}`:e.protocolFollowed==="Yes"?"✓ Protocol followed":e.protocolFollowed==="No protocol"?"⚠ No protocol on file":"Protocol status unclear"}</div>{e.admitted&&e.admitted!=="N/A"&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>Admission: {e.admitted}</div>}</div>}
           {e.outcome72h&&<div style={{marginTop:8,padding:"8px 12px",borderRadius:8,background:`${C.green}0a`,border:`1px solid ${C.green}25`,fontSize:12,color:C.green}}>72h outcome: {e.outcome72h}</div>}
           {e.notes&&<div style={{marginTop:10,fontSize:12,fontStyle:"italic",color:C.muted,borderLeft:`2px solid ${C.amber}50`,paddingLeft:10,lineHeight:1.6}}>"{e.notes}"</div>}
+          {e.ongoing&&onResolve&&(
+            <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${C.border}`}}>
+              <button onClick={()=>onResolve(e.submission_id||e.id, e.warriorId)} style={{background:"none",border:`1px solid ${C.green}40`,borderRadius:8,padding:"7px 14px",color:C.green,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                ✓ Mark this crisis as resolved
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -540,12 +547,27 @@ function generateBrief(entries){
 
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
-  const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
-  const topT=countT(entries).slice(0,3).map(([t])=>t);
-  const erCount=entries.filter(e=>e.erVisit==="Yes").length;
-  const violCount=entries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team")))).length;
-  const hasMenstrual=entries.some(e=>e.triggered.some(t=>t.includes("Menstrual")));
-  const spanDays=entries.length>1?days(sorted[0].submitted,sorted[sorted.length-1].submitted):0;
+  const [localEntries,setLocalEntries]=useState(entries);
+  const sorted=[...localEntries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
+  const topT=countT(localEntries).slice(0,3).map(([t])=>t);
+  const erCount=localEntries.filter(e=>e.erVisit==="Yes").length;
+  const violCount=localEntries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team")))).length;
+  const hasMenstrual=localEntries.some(e=>e.triggered.some(t=>t.includes("Menstrual")));
+  const spanDays=localEntries.length>1?days(sorted[0].submitted,sorted[sorted.length-1].submitted):0;
+
+  async function handleResolve(submissionId, warriorId){
+    try{
+      const result = await resolveCrisis(submissionId, warriorId);
+      if(result.success || result.alreadyResolved){
+        // Optimistic update — mark ongoing false locally
+        setLocalEntries(prev=>prev.map(e=>
+          (e.submission_id||e.id)===submissionId ? {...e, ongoing:false} : e
+        ));
+      }
+    } catch(err){
+      console.error("Resolve failed:", err);
+    }
+  }
   return(
     <div className="fade">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
@@ -559,17 +581,17 @@ function WarriorProfile({entries,onReset}){
             <div style={{fontSize:13,color:C.muted}}>{entries[0].community} · Tracking for {entries[0].trackingFor}{spanDays>0&&` · ${spanDays} days of data`}</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:10,flex:1,maxWidth:420}}>
-            <Pill label="Crises Logged" value={entries.length} accent={C.blue}/>
-            <Pill label="Avg Pain" value={avgPain(entries)} accent={C.red}/>
+            <Pill label="Crises Logged" value={localEntries.length} accent={C.blue}/>
+            <Pill label="Avg Pain" value={avgPain(localEntries)} accent={C.red}/>
             <Pill label="ER Visits" value={erCount} accent={C.amber}/>
             {violCount>0&&<Pill label="Violations" value={violCount} accent={C.red}/>}
           </div>
         </div>
-        <StabilityScore entries={entries}/>
-        <PatternMirror entries={entries}/>
+        <StabilityScore entries={localEntries}/>
+        <PatternMirror entries={localEntries}/>
       </div>
       <div style={{fontSize:10,letterSpacing:2.5,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Crisis Timeline — oldest first</div>
-      {sorted.map((e,i)=><Entry key={e.id} e={e} isLast={i===sorted.length-1}/>)}
+      {sorted.map((e,i)=><Entry key={e.id} e={e} isLast={i===sorted.length-1} onResolve={handleResolve}/>)}
     </div>
   );
 }
