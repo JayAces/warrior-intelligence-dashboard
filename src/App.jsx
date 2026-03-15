@@ -458,8 +458,6 @@ function generateBrief(entries){
     </tr>`;
   }).join("");
 
-  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https://warrior-intelligence-dashboard.vercel.app`;
-
   const html=`<!DOCTYPE html>
 <html>
 <head>
@@ -514,8 +512,11 @@ function generateBrief(entries){
   </div>
   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
     <div class="status-badge">${stabilityLabel}</div>
-    <img src="${qrUrl}" width="72" height="72" style="border:1px solid #e5e7eb;border-radius:4px;" alt="Verify at warrior-intelligence-dashboard.vercel.app"/>
-    <div style="font-size:8px;color:#aaa;text-align:right;">Scan to verify live data</div>
+    <div style="width:72px;height:72px;border:1px solid #e5e7eb;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f9fafb;padding:6px;text-align:center;">
+      <div style="font-size:9px;font-weight:700;color:#990000;letter-spacing:.5px;line-height:1.4;">VERIFY</div>
+      <div style="font-size:7px;color:#888;line-height:1.4;margin-top:2px;word-break:break-all;">warrior-intelligence-dashboard.vercel.app</div>
+    </div>
+    <div style="font-size:8px;color:#aaa;text-align:right;">Live data verification</div>
   </div>
 </div>
 
@@ -582,10 +583,10 @@ function generateBrief(entries){
 </body>
 </html>`;
 
-  const win=window.open("","_blank");
-  win.document.write(html);
-  win.document.close();
-  setTimeout(()=>win.print(),500);
+  const blob=new Blob([html],{type:"text/html"});
+  const url=URL.createObjectURL(blob);
+  const win=window.open(url,"_blank");
+  setTimeout(()=>{if(win)win.print();},800);
 }
 
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
