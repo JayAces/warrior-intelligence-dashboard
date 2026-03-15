@@ -512,11 +512,8 @@ function generateBrief(entries){
   </div>
   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
     <div class="status-badge">${stabilityLabel}</div>
-    <div style="width:72px;height:72px;border:1px solid #e5e7eb;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f9fafb;padding:6px;text-align:center;">
-      <div style="font-size:9px;font-weight:700;color:#990000;letter-spacing:.5px;line-height:1.4;">VERIFY</div>
-      <div style="font-size:7px;color:#888;line-height:1.4;margin-top:2px;word-break:break-all;">warrior-intelligence-dashboard.vercel.app</div>
-    </div>
-    <div style="font-size:8px;color:#aaa;text-align:right;">Live data verification</div>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&color=990000&bgcolor=ffffff&data=https://warrior-intelligence-dashboard.vercel.app" width="72" height="72" style="border:1px solid #e5e7eb;border-radius:4px;display:block;" alt="QR"/>
+    <div style="font-size:8px;color:#aaa;text-align:right;margin-top:2px;">Scan to verify live data</div>
   </div>
 </div>
 
