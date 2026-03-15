@@ -253,7 +253,7 @@ function PatternMirror({entries}){
     const total=entries.length;
     insight=`${topCombo[0]} appeared together in ${count} of your ${total} report${total!==1?"s":""} (${pct}%).`;
   } else if(topCombo){
-    insight=`Your most consistent trigger: ${topCombo[0]} — appeared in every report you've submitted.`;
+    insight=`Your most consistent trigger: ${topCombo[0]} — appeared in every report you've submitted (${entries.length} report${entries.length!==1?'s':''}).`;
   }
 
   const lines=[];
@@ -383,8 +383,8 @@ function StabilityScore({entries}){
       <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:longestGap>0?10:0}}>
         <div style={{flexShrink:0,textAlign:"center",minWidth:56}}>
           <div style={{fontFamily:"Syne",fontWeight:800,fontSize:32,color:band.color,lineHeight:1}}>{daysSinceLast}</div>
-          <div style={{fontSize:9,letterSpacing:1.5,color:band.color,textTransform:"uppercase",marginTop:2}}>days since</div>
-          <div style={{fontSize:9,letterSpacing:1,color:band.color,opacity:.7}}>last report</div>
+          <div style={{fontSize:9,letterSpacing:1.5,color:band.color,textTransform:"uppercase",marginTop:2}}>day stability</div>
+          <div style={{fontSize:9,letterSpacing:1,color:band.color,opacity:.7}}>window</div>
         </div>
         <div style={{width:1,height:44,background:`${band.color}30`,flexShrink:0}}/>
         <div>
@@ -403,7 +403,11 @@ function StabilityScore({entries}){
 function generateBrief(entries){
   const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
   const latest=sorted[sorted.length-1];
-  const topTriggers=countT(entries).slice(0,3).map(([t])=>t);
+  const triggerCounts=countT(entries); // [[label,count],...]
+  const primaryTrigger=triggerCounts[0]?triggerCounts[0][0]:"—";
+  const secondaryTrigger=triggerCounts[1]?triggerCounts[1][0]:null;
+  const emergingTrigger=triggerCounts[2]?triggerCounts[2][0]:null;
+  const hasMenstrual=entries.some(e=>e.triggered&&e.triggered.some(t=>t.includes("Menstrual")));
   const erVisits=entries.filter(e=>e.erVisit==="Yes");
   const violations=entries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"))));
   const avgP=entries.map(e=>e.pain).filter(p=>p>0);
@@ -413,6 +417,11 @@ function generateBrief(entries){
   const longestGap=gaps.length?Math.max(...gaps):0;
   const today=new Date().toISOString().slice(0,10);
   const daysSinceLast=days(sorted[sorted.length-1].submitted,today);
+  const totalReports=entries.length;
+
+  // Community percentages for top trigger
+  const communityTriggers={"Cold Weather":73,"High Stress":46,"Lack of Sleep":31,"Dehydration":26,"Illness/Infection":24,"Menstrual Cycle":21,"Overexertion":18};
+  const communityPct=communityTriggers[primaryTrigger]||null;
 
   // Stability band
   const pains=sorted.map(e=>e.pain).filter(p=>p>0);
@@ -428,20 +437,28 @@ function generateBrief(entries){
   if(avgGap>21)score+=15;else if(avgGap<7)score-=15;
   if(!latest.ongoing)score+=10;else score-=10;
   if(recentERRate<0.33)score+=10;else if(recentERRate>0.66)score-=10;
+  if(!latest.ongoing && daysSinceLast>30)score+=20;
+  else if(!latest.ongoing && daysSinceLast>14)score+=10;
   score=Math.max(10,Math.min(95,score));
   const stabilityLabel=score>=65?"STABLE":score>=40?"WATCHFUL":"HIGH LOAD";
-  const stabilityColor=score>=65?"#22c55e":score>=40?"#f59e0b":"#ef4444";
+  const stabilityColor=score>=65?"#16a34a":score>=40?"#d97706":"#dc2626";
+
+  // Home treatment attempted (from latest entry)
+  const homeTx=latest.treatment.filter(t=>!t.toLowerCase().includes("prescription")&&!t.toLowerCase().includes("morphine")).join(", ");
+  const homeFailed=latest.working==="Not at all"||latest.working==="A little";
 
   const erHistoryRows=erVisits.map(e=>{
     const viol=e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"));
     return `<tr>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.submitted}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.hospital||"—"}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.waitHours?e.waitHours+"h wait":""}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:${viol?"#dc2626":"#16a34a"};">${viol?"✗ Protocol NOT followed":"✓ Protocol followed"}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.admitted&&e.admitted!=="N/A"?e.admitted:""}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.submitted}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.hospital||"—"}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${e.waitHours?e.waitHours+"h":""}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:600;color:${viol?"#dc2626":"#16a34a"};">${viol?"✗ NOT FOLLOWED":"✓ Followed"}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#555;">${viol&&e.whyNot?e.whyNot:""}</td>
     </tr>`;
   }).join("");
+
+  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https://warrior-intelligence-dashboard.vercel.app`;
 
   const html=`<!DOCTYPE html>
 <html>
@@ -450,89 +467,115 @@ function generateBrief(entries){
 <title>Hii Clinical Intelligence Brief — ${entries[0].warriorId}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#111;background:#fff;padding:32px;max-width:780px;margin:0 auto;}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #990000;padding-bottom:16px;margin-bottom:24px;}
-  .brand{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#666;margin-bottom:4px;}
-  .title{font-size:22px;font-weight:800;color:#0f0f0f;letter-spacing:-0.3px;}
-  .subtitle{font-size:13px;color:#555;margin-top:3px;}
-  .status-badge{padding:8px 18px;border-radius:6px;font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;background:${stabilityColor}18;color:${stabilityColor};border:1.5px solid ${stabilityColor}50;text-align:center;}
-  .section{margin-bottom:22px;}
-  .section-header{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#990000;font-weight:700;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #f3e8e8;}
-  .row{display:flex;gap:8px;margin-bottom:6px;}
-  .label{font-size:11px;color:#666;min-width:160px;flex-shrink:0;}
-  .value{font-size:12px;color:#111;font-weight:500;}
-  .trigger-chip{display:inline-block;padding:3px 10px;border-radius:12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;margin-right:5px;margin-bottom:4px;}
-  table{width:100%;border-collapse:collapse;margin-top:6px;}
-  th{background:#f9fafb;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#666;padding:7px 10px;text-align:left;border-bottom:2px solid #e5e7eb;}
-  .safeguard-note{background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:14px 16px;font-size:12px;color:#7f1d1d;line-height:1.7;}
-  .footer{margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:flex-end;}
-  .footer-left{font-size:10px;color:#999;line-height:1.7;}
-  .footer-right{font-size:10px;color:#999;text-align:right;}
-  .tagline{font-size:11px;color:#C1A004;font-weight:600;letter-spacing:.5px;}
-  @media print{body{padding:20px;} .no-print{display:none;}}
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#111;background:#fff;padding:28px 32px;max-width:780px;margin:0 auto;font-size:13px;}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #990000;padding-bottom:14px;margin-bottom:20px;}
+  .brand{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#888;margin-bottom:3px;}
+  .title{font-size:20px;font-weight:800;color:#0f0f0f;letter-spacing:-0.3px;}
+  .subtitle{font-size:12px;color:#555;margin-top:4px;line-height:1.6;}
+  .status-badge{padding:10px 20px;border-radius:6px;font-weight:800;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;background:${stabilityColor}15;color:${stabilityColor};border:2px solid ${stabilityColor}40;text-align:center;min-width:110px;}
+  .section{margin-bottom:18px;page-break-inside:avoid;}
+  .section-header{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#990000;font-weight:800;margin-bottom:8px;padding-bottom:5px;border-bottom:1.5px solid #fce8e8;display:flex;align-items:center;gap:6px;}
+  .row{display:flex;gap:8px;margin-bottom:5px;align-items:baseline;}
+  .label{font-size:11px;color:#777;min-width:170px;flex-shrink:0;}
+  .value{font-size:12px;color:#111;font-weight:600;}
+  .trigger-rank{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  .trigger-row{display:flex;align-items:center;gap:10px;}
+  .trigger-badge{font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border-radius:3px;font-weight:700;flex-shrink:0;min-width:68px;text-align:center;}
+  .primary-badge{background:#fef3c7;color:#92400e;border:1px solid #fde68a;}
+  .secondary-badge{background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;}
+  .emerging-badge{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+  .trigger-name{font-size:12px;font-weight:600;color:#111;}
+  .trigger-count{font-size:11px;color:#888;}
+  .community-bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;}
+  table{width:100%;border-collapse:collapse;margin-top:8px;}
+  th{background:#f9fafb;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#888;padding:7px 10px;text-align:left;border-bottom:2px solid #e5e7eb;}
+  .safeguard-box{background:#fff1f2;border:1.5px solid #fecdd3;border-radius:6px;padding:12px 14px;font-size:12px;color:#7f1d1d;line-height:1.7;margin-top:10px;}
+  .request-box{background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:6px;padding:14px 16px;font-size:12px;line-height:1.8;color:#0c4a6e;}
+  .cost-box{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:11px;color:#78350f;line-height:1.7;margin-top:10px;}
+  .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:flex-end;}
+  .footer-left{font-size:10px;color:#aaa;line-height:1.8;}
+  .footer-right{text-align:right;}
+  .tagline{font-size:11px;color:#C1A004;font-weight:700;letter-spacing:.5px;}
+  .copyright{font-size:9px;color:#bbb;margin-top:2px;}
+  .menstrual-flag{background:#fdf4ff;border:1px solid #e9d5ff;border-radius:5px;padding:7px 12px;font-size:11px;color:#6b21a8;margin-top:8px;line-height:1.6;}
+  @media print{body{padding:16px 20px;} .no-print{display:none;} .section{page-break-inside:avoid;}}
 </style>
 </head>
 <body>
 
 <div class="header">
   <div>
-    <div class="brand">Human Intelligence Infrastructure · Hii Clinical Brief</div>
-    <div class="title">Clinical Intelligence Brief</div>
-    <div class="subtitle">Warrior ID: ${entries[0].warriorId} &nbsp;·&nbsp; Generated: ${today} &nbsp;·&nbsp; ${entries.length} crisis report${entries.length!==1?"s":""} on record</div>
+    <div class="brand">Human Intelligence Infrastructure · Warrior Intelligence Project</div>
+    <div class="title">Hii Clinical Intelligence Brief</div>
+    <div class="subtitle">
+      Warrior ID: <strong>${entries[0].warriorId}</strong> &nbsp;·&nbsp; Generated: ${today}<br/>
+      ${totalReports} crisis report${totalReports!==1?"s":""} on record &nbsp;·&nbsp; Tracking for: ${entries[0].trackingFor}
+    </div>
   </div>
-  <div class="status-badge">${stabilityLabel}</div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="status-badge">${stabilityLabel}</div>
+    <img src="${qrUrl}" width="72" height="72" style="border:1px solid #e5e7eb;border-radius:4px;" alt="Verify at warrior-intelligence-dashboard.vercel.app"/>
+    <div style="font-size:8px;color:#aaa;text-align:right;">Scan to verify live data</div>
+  </div>
 </div>
 
 <div class="section">
-  <div class="section-header">◈ Compass — Longitudinal Orientation</div>
-  <div class="row"><span class="label">Crisis reports on record</span><span class="value">${entries.length}</span></div>
-  <div class="row"><span class="label">Average pain level</span><span class="value">${avg}/10</span></div>
-  <div class="row"><span class="label">Days since last report</span><span class="value">${daysSinceLast} days</span></div>
-  ${longestGap>0?`<div class="row"><span class="label">Longest crisis-free window</span><span class="value">${longestGap} days</span></div>`:""}
-  <div class="row"><span class="label">Current crisis status</span><span class="value">${latest.ongoing?"Active — crisis ongoing as of last report":"Resolved as of last report"}</span></div>
-  <div class="row"><span class="label">Tracking for</span><span class="value">${entries[0].trackingFor}</span></div>
+  <div class="section-header">◈ &nbsp;Compass &nbsp;—&nbsp; Longitudinal Orientation</div>
+  <div class="row"><span class="label">Baseline stability window</span><span class="value">${daysSinceLast} days since last crisis report</span></div>
+  ${longestGap>0?`<div class="row"><span class="label">Longest recorded window</span><span class="value">${longestGap} days</span></div>`:""}
+  <div class="row"><span class="label">Current trajectory</span><span class="value">${latest.crisisStart?`Started ${latest.crisisStart}`:""} ${latest.ongoing?"— Active crisis":"— Resolved"}</span></div>
+  <div class="row"><span class="label">Pain intensity (last report)</span><span class="value">${latest.pain}/10 &nbsp;·&nbsp; ${normPC(latest.painCompared)||""}</span></div>
+  <div class="row"><span class="label">Average pain (all reports)</span><span class="value">${avg}/10</span></div>
+  ${homeTx?`<div class="row"><span class="label">Home management attempted</span><span class="value">${homeTx}</span></div>`:""}
+  ${homeFailed?`<div class="row"><span class="label">Home treatment response</span><span class="value" style="color:#dc2626;">${latest.working} — home titration has reached its limit</span></div>`:""}
+  <div style="margin-top:8px;padding:8px 12px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;font-size:11px;color:#334155;line-height:1.7;">
+    <strong>Clinical context:</strong> This patient is an expert navigator of their own maintenance pattern.
+    ${latest.ongoing?"This visit represents a deviation from baseline — home-titration failure is indicated.":"Crisis resolved. This brief documents the completed episode for clinical record."}
+  </div>
 </div>
 
 <div class="section">
-  <div class="section-header">◈ Loop — Verified Trigger Patterns</div>
-  <div class="row"><span class="label">Primary triggers identified</span><span class="value">${topTriggers.join(", ")||"—"}</span></div>
-  <div style="margin-top:8px;">${topTriggers.map(t=>`<span class="trigger-chip">${t}</span>`).join("")}</div>
+  <div class="section-header">◈ &nbsp;Loop &nbsp;—&nbsp; Verified Trigger Patterns</div>
+  <div class="trigger-rank">
+    ${triggerCounts[0]?`<div class="trigger-row"><span class="trigger-badge primary-badge">Primary</span><span class="trigger-name">${triggerCounts[0][0]}</span><span class="trigger-count">(${triggerCounts[0][1]} of ${totalReports} report${totalReports!==1?"s":""})</span></div>`:""}
+    ${triggerCounts[1]?`<div class="trigger-row"><span class="trigger-badge secondary-badge">Secondary</span><span class="trigger-name">${triggerCounts[1][0]}</span><span class="trigger-count">(${triggerCounts[1][1]} of ${totalReports} report${totalReports!==1?"s":""})</span></div>`:""}
+    ${triggerCounts[2]?`<div class="trigger-row"><span class="trigger-badge emerging-badge">Emerging</span><span class="trigger-name">${triggerCounts[2][0]}</span><span class="trigger-count">(${triggerCounts[2][1]} of ${totalReports} report${totalReports!==1?"s":""})</span></div>`:""}
+  </div>
+  ${communityPct?`<div class="community-bar"><span style="font-size:11px;color:#555;"><strong style="color:#111;">${primaryTrigger}</strong> affects <strong>${communityPct}%</strong> of the broader Warrior community (78 Warriors, 17 states). This patient's pattern aligns with a verified population signal.</span></div>`:""}
+  ${hasMenstrual?`<div class="menstrual-flag">⚠ <strong>Hormonal Trigger Identified:</strong> Menstrual cycle is a documented crisis trigger for this patient — a signal largely absent from standard ER triage intake protocols. Community data surfaced this pattern in under 10 days across 78 Warriors.</div>`:""}
   ${latest.treatment.length?`<div class="row" style="margin-top:10px;"><span class="label">Current treatment</span><span class="value">${latest.treatment.join(", ")}</span></div>`:""}
-  ${latest.working?`<div class="row"><span class="label">Treatment effectiveness</span><span class="value">${latest.working}</span></div>`:""}
 </div>
 
 <div class="section">
-  <div class="section-header">◈ Safeguard — Protocol & Accountability History</div>
+  <div class="section-header">◈ &nbsp;Safeguard &nbsp;—&nbsp; Protocol & Accountability History</div>
   ${erVisits.length?`
   <table>
-    <thead><tr>
-      <th>Date</th><th>Hospital</th><th>Wait</th><th>Protocol</th><th>Admission</th>
-    </tr></thead>
+    <thead><tr><th>Date</th><th>Hospital</th><th>Wait</th><th>Protocol Status</th><th>Reason (if not followed)</th></tr></thead>
     <tbody>${erHistoryRows}</tbody>
-  </table>`:`<div style="font-size:12px;color:#666;padding:8px 0;">No ER visits on record for this Warrior.</div>`}
-  ${violations.length?`
-  <div class="safeguard-note" style="margin-top:12px;">
-    <strong>${violations.length} documented protocol violation${violations.length!==1?"s":""} on record.</strong> This Warrior's experience is part of the community evidence base maintained by Sickle Cell Warriors of Buffalo. Protocol violations are logged for quality improvement reporting to hospital administrators and health equity partners.
-  </div>`:""}
+  </table>`:`<div style="font-size:12px;color:#777;padding:6px 0;">No ER visits on record for this Warrior.</div>`}
+  ${violations.length?`<div class="safeguard-box" style="margin-top:10px;"><strong>${violations.length} documented protocol violation${violations.length!==1?"s":""} on record.</strong> These encounters are logged in the Warrior Intelligence Project community evidence base — maintained by Sickle Cell Warriors of Buffalo for quality improvement reporting, health equity advocacy, and institutional partnership conversations.</div>`:""}
 </div>
 
 <div class="section">
-  <div class="section-header">◈ Clinical Request</div>
-  <div style="font-size:13px;line-height:1.8;color:#222;">
-    This Warrior has documented expertise in managing their own crisis trajectory. Home management has been attempted. Clinical intervention is requested. Please initiate established Sickle Cell pain protocol immediately.<br/><br/>
-    <strong>Community data indicates Warriors who are admitted report outcomes 2.5× better than those treated and released.</strong> Early admission and protocol adherence represent the highest-value clinical decision for this patient.
+  <div class="section-header">◈ &nbsp;Clinical Request</div>
+  <div class="request-box">
+    This patient has documented expertise in managing their own crisis trajectory. Home management has been attempted and ${homeFailed?"has reached its limit":"is supplementary to this visit"}. <strong>Please initiate established Sickle Cell pain protocol immediately.</strong><br/><br/>
+    Community data from 78 Warriors indicates patients who are admitted report outcomes <strong>2.5× better</strong> than those treated and released. Early protocol initiation and admission consideration represent the highest-value clinical decisions for this patient profile.
+  </div>
+  <div class="cost-box">
+    <strong>Systemic Risk & Cost Context:</strong> Research (Shah et al., 2020) estimates mean annual SCD-related costs at <strong>~$59,000 per patient</strong> — largely driven by acute crisis mismanagement and ineffective treat-and-release cycles. Protocol adherence at this visit directly affects that trajectory.
   </div>
 </div>
 
 <div class="footer">
   <div class="footer-left">
-    Warrior Intelligence Project · Sickle Cell Warriors of Buffalo<br/>
-    info@kindredcompassholdings.com · 716-818-2338<br/>
+    Warrior Intelligence Project &nbsp;·&nbsp; Sickle Cell Warriors of Buffalo<br/>
+    info@kindredcompassholdings.com &nbsp;·&nbsp; 716-818-2338<br/>
     warrior-intelligence-dashboard.vercel.app
   </div>
   <div class="footer-right">
     <div class="tagline">Our Pain. Our Data. Our Power.</div>
-    <div style="margin-top:3px;">© ${new Date().getFullYear()} Jason Robert Moore. All Rights Reserved.<br/>Human Intelligence Infrastructure (Hii) Framework.</div>
+    <div class="copyright">© ${new Date().getFullYear()} Jason Robert Moore. All Rights Reserved.<br/>Human Intelligence Infrastructure (Hii) Framework.</div>
   </div>
 </div>
 
