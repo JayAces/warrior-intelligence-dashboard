@@ -38,6 +38,7 @@ async function fetchWarriorData() {
     age: r.age ? Number(r.age) : null,
     consented: r.consent === true || r.consent === "true",
     notes: r.notes || "",
+    hydrationOz: r.hydration_oz ? Number(r.hydration_oz) : null,
   }));
 }
 
@@ -260,6 +261,20 @@ function PatternMirror({entries}){
   if(insight) lines.push({text:insight, color:C.amber});
   if(hasMenstrual) lines.push({text:"Menstrual cycle is a documented trigger in your data — you identified this before most clinical systems would catch it.", color:C.purple});
   if(violCount>0) lines.push({text:`${violCount} protocol violation${violCount>1?"s":""} on record. Your experience is part of the community evidence base.`, color:C.red});
+  // Hydration correlation insight
+  const hydrationEntries=entries.filter(e=>e.hydrationOz!=null);
+  if(hydrationEntries.length>=2){
+    const crisisEntries=hydrationEntries.filter(e=>e.pain>=7);
+    const stableEntries=hydrationEntries.filter(e=>e.pain<7);
+    const avgHydCrisis=crisisEntries.length?Math.round(crisisEntries.reduce((a,b)=>a+b.hydrationOz,0)/crisisEntries.length):null;
+    const avgHydStable=stableEntries.length?Math.round(stableEntries.reduce((a,b)=>a+b.hydrationOz,0)/stableEntries.length):null;
+    if(avgHydCrisis&&avgHydStable&&avgHydStable>avgHydCrisis+8){
+      lines.push({text:`Your crises average ${avgHydCrisis}oz of water the day before — compared to ${avgHydStable}oz on lower-pain days. Hydration is a measurable factor in your pattern.`, color:C.blue});
+    } else if(avgHydCrisis&&avgHydCrisis<48){
+      lines.push({text:`Your pre-crisis hydration averaged ${avgHydCrisis}oz — below the recommended daily intake. Dehydration may be an underreported factor in your crises.`, color:C.blue});
+    }
+  }
+
   // Contribution visibility — what their data is doing
   lines.push({text:"Your submissions are contributing to: community crisis tracking, ER accountability reporting, and trigger pattern detection.", color:C.teal, isContrib:true});
   // avg pain already shown in pills — omitted from mirror
@@ -525,6 +540,7 @@ function generateBrief(entries){
   <div class="row"><span class="label">Pain intensity (last report)</span><span class="value">${latest.pain}/10 &nbsp;·&nbsp; ${normPC(latest.painCompared)||""}</span></div>
   <div class="row"><span class="label">Average pain (all reports)</span><span class="value">${avg}/10</span></div>
   ${homeTx?`<div class="row"><span class="label">Home management attempted</span><span class="value">${homeTx}</span></div>`:""}
+  ${latest.hydrationOz!=null?`<div class="row"><span class="label">Pre-crisis hydration (logged)</span><span class="value">${latest.hydrationOz}oz in 24hrs prior${latest.hydrationOz<40?' <span style="color:#dc2626;font-size:11px;">— below threshold</span>':latest.hydrationOz>=64?' <span style="color:#16a34a;font-size:11px;">— adequate</span>':' <span style="color:#d97706;font-size:11px;">— borderline</span>'}</span></div>`:""}
   ${homeFailed?`<div class="row"><span class="label">Home treatment response</span><span class="value" style="color:#dc2626;">${latest.working} — home titration has reached its limit</span></div>`:""}
   <div style="margin-top:8px;padding:8px 12px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;font-size:11px;color:#334155;line-height:1.7;">
     <strong>Clinical context:</strong> This patient is an expert navigator of their own maintenance pattern.
