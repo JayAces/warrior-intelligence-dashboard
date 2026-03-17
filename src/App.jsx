@@ -602,9 +602,252 @@ function generateBrief(entries){
   setTimeout(()=>{if(win)win.print();},800);
 }
 
+// ── PROTOCOL BUILDER ─────────────────────────────────────────────────────────
+function ProtocolBuilder({entries, onClose}){
+  const [form,setForm]=useState({
+    preferredMeds:"",
+    stepUpMeds:"",
+    allergies:"",
+    hematologistName:"",
+    hematologistPhone:"",
+    emergencyContact:"",
+    emergencyPhone:"",
+    additionalNotes:"",
+  });
+
+  const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
+  const avgP=entries.map(e=>e.pain).filter(p=>p>0);
+  const avgPain=avgP.length?(avgP.reduce((a,b)=>a+b,0)/avgP.length).toFixed(1):"—";
+  const triggerCounts=countT(entries);
+  const topTriggers=triggerCounts.slice(0,3).map(([t])=>t);
+  const effectiveTx=entries.filter(e=>e.working==="Well"||e.working==="Moderately").flatMap(e=>e.treatment);
+  const ineffectiveTx=entries.filter(e=>e.working==="Not at all").flatMap(e=>e.treatment);
+  const uniqueEffective=[...new Set(effectiveTx)].filter(t=>!t.includes("Nothing"));
+  const uniqueIneffective=[...new Set(ineffectiveTx)].filter(t=>!t.includes("Nothing"));
+  const today=new Date().toISOString().slice(0,10);
+
+  function update(k,v){setForm(f=>({...f,[k]:v}));}
+
+  function generateProtocol(){
+    const html=`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>SCD Pain Protocol Request — ${entries[0].warriorId}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#111;background:#fff;padding:28px 32px;max-width:780px;margin:0 auto;font-size:13px;}
+  .header{border-bottom:3px solid #990000;padding-bottom:14px;margin-bottom:20px;}
+  .brand{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#888;margin-bottom:3px;}
+  .title{font-size:20px;font-weight:800;color:#0f0f0f;letter-spacing:-0.3px;}
+  .subtitle{font-size:12px;color:#555;margin-top:4px;line-height:1.6;}
+  .intro-box{background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:6px;padding:14px 16px;font-size:12px;line-height:1.8;color:#0c4a6e;margin-bottom:20px;}
+  .section{margin-bottom:18px;page-break-inside:avoid;}
+  .section-header{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#990000;font-weight:800;margin-bottom:8px;padding-bottom:5px;border-bottom:1.5px solid #fce8e8;}
+  .row{display:flex;gap:8px;margin-bottom:5px;align-items:baseline;}
+  .label{font-size:11px;color:#777;min-width:180px;flex-shrink:0;}
+  .value{font-size:12px;color:#111;font-weight:600;}
+  .tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;margin-right:4px;margin-bottom:3px;}
+  .trigger-tag{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;}
+  .effective-tag{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+  .ineffective-tag{background:#fff1f2;color:#7f1d1d;border:1px solid #fecdd3;}
+  .sign-box{margin-top:28px;padding:16px;border:1.5px dashed #d1d5db;border-radius:6px;background:#fafafa;}
+  .sign-row{display:flex;gap:40px;margin-top:16px;}
+  .sign-field{flex:1;}
+  .sign-line{border-bottom:1px solid #374151;margin-top:24px;margin-bottom:4px;}
+  .sign-label{font-size:10px;color:#6b7280;letter-spacing:.5px;}
+  .fill-line{border-bottom:1px solid #9ca3af;min-width:200px;display:inline-block;margin-left:8px;margin-bottom:2px;}
+  .fill-section{background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:14px 16px;margin-top:8px;}
+  .fill-row{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .fill-label{font-size:11px;color:#374151;min-width:160px;flex-shrink:0;font-weight:500;}
+  .fill-value{font-size:12px;color:#111;font-weight:600;border-bottom:1px solid #d1d5db;flex:1;padding-bottom:2px;min-height:18px;}
+  .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:flex-end;}
+  .tagline{font-size:11px;color:#C1A004;font-weight:700;letter-spacing:.5px;}
+  .copyright{font-size:9px;color:#bbb;margin-top:2px;}
+  @media print{body{padding:16px 20px;} .no-print{display:none;}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">Human Intelligence Infrastructure · Warrior Intelligence Project · Sickle Cell Warriors of Buffalo</div>
+  <div class="title">Sickle Cell Disease Pain Protocol Request</div>
+  <div class="subtitle">Prepared for clinical review &nbsp;·&nbsp; Warrior ID: <strong>${entries[0].warriorId}</strong> &nbsp;·&nbsp; Generated: ${today}</div>
+</div>
+
+<div class="intro-box">
+  <strong>To the treating clinician:</strong> This document has been prepared by the patient using the Warrior Intelligence Project — a community-owned, real-time SCD crisis tracking system maintained by Sickle Cell Warriors of Buffalo. The patient is requesting that you review the information below, adapt as clinically appropriate, and establish a signed SCD Pain Protocol for use in future emergency visits. A signed protocol on file significantly reduces time-to-analgesia and improves outcomes for this patient population.
+</div>
+
+<div class="section">
+  <div class="section-header">◈ &nbsp;Patient Baseline — From Crisis Tracking Data</div>
+  <div class="row"><span class="label">Warrior ID (anonymous)</span><span class="value">${entries[0].warriorId}</span></div>
+  <div class="row"><span class="label">Crisis reports on record</span><span class="value">${entries.length} report${entries.length!==1?"s":""}</span></div>
+  <div class="row"><span class="label">Average pain level at crisis</span><span class="value">${avgPain}/10</span></div>
+  <div class="row"><span class="label">Tracking for</span><span class="value">${entries[0].trackingFor}</span></div>
+  ${topTriggers.length?`
+  <div style="margin-top:8px;">
+    <div class="label" style="margin-bottom:5px;">Documented primary triggers</div>
+    ${topTriggers.map(t=>`<span class="tag trigger-tag">${t}</span>`).join("")}
+  </div>`:""}
+  ${uniqueEffective.length?`
+  <div style="margin-top:8px;">
+    <div class="label" style="margin-bottom:5px;">Treatments with documented effectiveness</div>
+    ${uniqueEffective.map(t=>`<span class="tag effective-tag">${t}</span>`).join("")}
+  </div>`:""}
+  ${uniqueIneffective.length?`
+  <div style="margin-top:8px;">
+    <div class="label" style="margin-bottom:5px;">Treatments with no documented effectiveness</div>
+    ${uniqueIneffective.map(t=>`<span class="tag ineffective-tag">${t}</span>`).join("")}
+  </div>`:""}
+</div>
+
+<div class="section">
+  <div class="section-header">◈ &nbsp;Patient-Provided Information</div>
+  <div class="fill-section">
+    <div class="fill-row"><span class="fill-label">Preferred pain medication(s)</span><span class="fill-value">${form.preferredMeds||""}</span></div>
+    <div class="fill-row"><span class="fill-label">Step-up medication(s)</span><span class="fill-value">${form.stepUpMeds||""}</span></div>
+    <div class="fill-row"><span class="fill-label">Known allergies</span><span class="fill-value">${form.allergies||"None reported"}</span></div>
+    <div class="fill-row"><span class="fill-label">Hematologist / SCD specialist</span><span class="fill-value">${form.hematologistName||""}</span></div>
+    <div class="fill-row"><span class="fill-label">Specialist phone</span><span class="fill-value">${form.hematologistPhone||""}</span></div>
+    <div class="fill-row"><span class="fill-label">Emergency contact</span><span class="fill-value">${form.emergencyContact||""}</span></div>
+    <div class="fill-row"><span class="fill-label">Emergency contact phone</span><span class="fill-value">${form.emergencyPhone||""}</span></div>
+    ${form.additionalNotes?`<div class="fill-row"><span class="fill-label">Additional notes</span><span class="fill-value">${form.additionalNotes}</span></div>`:""}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">◈ &nbsp;Protocol to Be Established (Clinician Completes)</div>
+  <div class="fill-section">
+    <div class="fill-row"><span class="fill-label">First-line pain medication</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">Dose and route</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">Reassessment interval</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">Step-up if inadequate relief</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">Admission threshold</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">IV fluids</span><span class="fill-value">&nbsp;</span></div>
+    <div class="fill-row"><span class="fill-label">Other standing orders</span><span class="fill-value">&nbsp;</span></div>
+  </div>
+</div>
+
+<div class="sign-box">
+  <div style="font-size:11px;color:#374151;font-weight:600;margin-bottom:4px;">Clinician Authorization</div>
+  <div style="font-size:11px;color:#6b7280;line-height:1.7;">By signing below, the clinician confirms they have reviewed this protocol request, made appropriate clinical adaptations, and established this as the patient's standing SCD pain management protocol.</div>
+  <div class="sign-row">
+    <div class="sign-field">
+      <div class="sign-line"></div>
+      <div class="sign-label">Clinician Signature</div>
+    </div>
+    <div class="sign-field">
+      <div class="sign-line"></div>
+      <div class="sign-label">Printed Name & Title</div>
+    </div>
+    <div class="sign-field">
+      <div class="sign-line"></div>
+      <div class="sign-label">Date</div>
+    </div>
+    <div class="sign-field">
+      <div class="sign-line"></div>
+      <div class="sign-label">NPI / License #</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <div style="font-size:10px;color:#aaa;line-height:1.8;">
+    Warrior Intelligence Project &nbsp;·&nbsp; Sickle Cell Warriors of Buffalo<br/>
+    info@kindredcompassholdings.com &nbsp;·&nbsp; 716-818-2338<br/>
+    warrior-intelligence-dashboard.vercel.app
+  </div>
+  <div style="text-align:right;">
+    <div class="tagline">Our Pain. Our Data. Our Power.</div>
+    <div class="copyright">© ${new Date().getFullYear()} Jason Robert Moore. All Rights Reserved.<br/>Human Intelligence Infrastructure (Hii) Framework.</div>
+  </div>
+</div>
+
+</body>
+</html>`;
+
+    const blob=new Blob([html],{type:"text/html"});
+    const url=URL.createObjectURL(blob);
+    const win=window.open(url,"_blank");
+    setTimeout(()=>{if(win)win.print();},800);
+  }
+
+  const inputStyle={width:"100%",background:C.surf,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"'IBM Plex Sans',sans-serif"};
+  const labelStyle={fontSize:11,color:C.muted,letterSpacing:.5,marginBottom:5,display:"block"};
+
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.85)",zIndex:100,overflowY:"auto",padding:"24px 16px"}}>
+      <div style={{maxWidth:600,margin:"0 auto",background:C.surf,borderRadius:16,border:`1px solid ${C.border}`,padding:28}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:2.5,color:C.red,textTransform:"uppercase",marginBottom:3}}>Protocol Builder</div>
+            <div style={{fontFamily:"Syne",fontWeight:800,fontSize:18}}>SCD Pain Protocol Request</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:3}}>This document goes to your doctor to establish your ER protocol.</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",padding:4}}>✕</button>
+        </div>
+
+        <div style={{background:`${C.teal}0a`,border:`1px solid ${C.teal}20`,borderRadius:10,padding:"12px 16px",marginBottom:20,fontSize:12,color:"rgba(255,255,255,0.7)",lineHeight:1.7}}>
+          <span style={{color:C.teal,fontWeight:600}}>Pre-filled from your tracker data:</span> average pain {avgPain}/10, top triggers ({topTriggers.join(", ")||"—"}){uniqueEffective.length?`, effective treatments (${uniqueEffective.slice(0,2).join(", ")})`:""}.
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <label style={labelStyle}>Preferred pain medication(s) *</label>
+            <input style={inputStyle} placeholder="e.g. IV Dilaudid 1mg, oral oxycodone" value={form.preferredMeds} onChange={e=>update("preferredMeds",e.target.value)}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Step-up medication(s) if first-line fails</label>
+            <input style={inputStyle} placeholder="e.g. Morphine PCA, IV ketamine" value={form.stepUpMeds} onChange={e=>update("stepUpMeds",e.target.value)}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Known allergies or medications to avoid</label>
+            <input style={inputStyle} placeholder="e.g. NSAIDS, codeine, penicillin" value={form.allergies} onChange={e=>update("allergies",e.target.value)}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>
+              <label style={labelStyle}>Hematologist / SCD specialist name</label>
+              <input style={inputStyle} placeholder="Dr. Name" value={form.hematologistName} onChange={e=>update("hematologistName",e.target.value)}/>
+            </div>
+            <div>
+              <label style={labelStyle}>Specialist phone number</label>
+              <input style={inputStyle} placeholder="(000) 000-0000" value={form.hematologistPhone} onChange={e=>update("hematologistPhone",e.target.value)}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>
+              <label style={labelStyle}>Emergency contact name</label>
+              <input style={inputStyle} placeholder="Full name" value={form.emergencyContact} onChange={e=>update("emergencyContact",e.target.value)}/>
+            </div>
+            <div>
+              <label style={labelStyle}>Emergency contact phone</label>
+              <input style={inputStyle} placeholder="(000) 000-0000" value={form.emergencyPhone} onChange={e=>update("emergencyPhone",e.target.value)}/>
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Additional notes for your doctor (optional)</label>
+            <textarea style={{...inputStyle,minHeight:72,resize:"vertical"}} placeholder="Anything else your doctor should know..." value={form.additionalNotes} onChange={e=>update("additionalNotes",e.target.value)}/>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:10,marginTop:22}}>
+          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 0",color:C.muted,fontSize:13,cursor:"pointer"}}>Cancel</button>
+          <button onClick={generateProtocol} style={{flex:2,background:C.red,border:"none",borderRadius:8,padding:"11px 0",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>Generate Protocol Request →</button>
+        </div>
+
+        <div style={{marginTop:14,fontSize:11,color:C.muted,textAlign:"center",lineHeight:1.6}}>
+          Nothing you enter here is stored or transmitted. This generates a PDF for you to print or save.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
   const [localEntries,setLocalEntries]=useState(entries);
+  const [showProtocolBuilder,setShowProtocolBuilder]=useState(false);
   const sorted=[...localEntries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
   const topT=countT(localEntries).slice(0,3).map(([t])=>t);
   const erCount=localEntries.filter(e=>e.erVisit==="Yes").length;
@@ -629,7 +872,10 @@ function WarriorProfile({entries,onReset}){
     <div className="fade">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
         <button onClick={onReset} style={{background:"none",border:"none",color:C.muted,fontSize:13,display:"flex",alignItems:"center",gap:6,padding:0}}>← Search again</button>
-        <button onClick={()=>generateBrief(entries)} style={{background:"none",border:`1px solid ${C.amber}50`,borderRadius:8,padding:"7px 16px",color:C.amber,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⬇ Export Clinical Brief</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowProtocolBuilder(true)} style={{background:"none",border:`1px solid ${C.teal}50`,borderRadius:8,padding:"7px 16px",color:C.teal,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⚕ Build Protocol</button>
+          <button onClick={()=>generateBrief(localEntries)} style={{background:"none",border:`1px solid ${C.amber}50`,borderRadius:8,padding:"7px 16px",color:C.amber,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⬇ Export Clinical Brief</button>
+        </div>
       </div>
       <div style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:24,marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:14,marginBottom:20}}>
@@ -649,6 +895,7 @@ function WarriorProfile({entries,onReset}){
       </div>
       <div style={{fontSize:10,letterSpacing:2.5,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Crisis Timeline — oldest first</div>
       {sorted.map((e,i)=><Entry key={e.id} e={e} isLast={i===sorted.length-1} onResolve={handleResolve}/>)}
+      {showProtocolBuilder&&<ProtocolBuilder entries={localEntries} onClose={()=>setShowProtocolBuilder(false)}/>}
     </div>
   );
 }
