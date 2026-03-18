@@ -25,7 +25,7 @@ async function fetchWarriorData() {
     temp: r.temperature ? parseFloat(r.temperature) : null,
     erVisit: r.er_visit || "",
     hospital: r.hospital || "",
-    waitHours: r.wait_hours ? parseFloat(r.wait_hours) : 0,
+    waitHours: r.wait_hours || 0,
     triageToTreatment: r.triage_to_treatment_hours ? parseFloat(r.triage_to_treatment_hours) : null,
     protocolFollowed: r.protocol_followed || "",
     whyNot: r.why_not_followed || "",
@@ -143,6 +143,7 @@ function findMatches(query){
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const TS={"Cold weather exposure":"Cold Weather","High stress situation":"High Stress","Lack of sleep":"Lack of Sleep","Dehydration (missed water intake)":"Dehydration","Menstrual cycle":"Menstrual Cycle","Illness (cold, flu, infection)":"Illness/Infection","Physical overexertion":"Overexertion","Changed altitude/air pressure":"Altitude/Pressure","Skipped medication":"Skipped Medication"};
 const avgPain=e=>{const v=e.map(x=>x.pain).filter(p=>p>0);return v.length?(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1):"—";};
+const fmtWait=w=>{if(!w||w===0)return null;if(typeof w==="string"&&w.includes("min"))return w;if(typeof w==="string"&&(w.includes("hour")||w.includes("h")))return w;const n=parseFloat(w);if(isNaN(n)||n===0)return null;if(n<1)return`${Math.round(n*60)} min wait`;return`${n}h wait`;}; 
 const normPC=s=>{if(!s)return s;return s.replace(/Worse thn usual/i,"Worse than usual").replace(/Better thn usual/i,"Better than usual");}; 
 const countT=entries=>{const c={};entries.forEach(e=>e.triggered.forEach(t=>{const s=TS[t]||t;c[s]=(c[s]||0)+1;}));return Object.entries(c).sort((a,b)=>b[1]-a[1]);};
 const painCol=p=>p>=8?"#e85555":p>=5?"#f0a500":"#4ade80";
@@ -200,7 +201,7 @@ function Entry({e,isLast,onResolve}){
           {e.triggered.length>0&&<div style={{marginBottom:8}}><span style={{fontSize:10,letterSpacing:1.5,color:C.muted,textTransform:"uppercase",marginRight:6}}>Triggers</span>{e.triggered.map(t=><Tag key={t} label={TS[t]||t} color={t.includes("Menstrual")?C.purple:C.amber}/>)}</div>}
           <div style={{fontSize:12,color:C.muted,marginBottom:e.erVisit==="Yes"||e.triageToTreatment||e.outcome72h||e.notes?8:0}}><span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6}}>Treatment</span><span style={{color:C.text}}>{e.treatment.join(", ")||"—"}</span>{e.working&&<span style={{color:C.muted}}> — {e.working}</span>}</div>
           {e.triageToTreatment&&<div style={{fontSize:12,marginBottom:8,color:C.muted}}><span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginRight:6}}>Triage→Treatment</span><span style={{color:C.text}}>{e.triageToTreatment}h</span></div>}
-          {e.erVisit==="Yes"&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:viol?`${C.red}0c`:`${C.green}0a`,border:`1px solid ${viol?C.red+"28":C.green+"25"}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:4}}><span style={{fontSize:13,fontWeight:500}}>🏥 {e.hospital||"ER Visit"}</span>{e.waitHours>0&&<span style={{fontSize:11,color:C.muted}}>{e.waitHours}h wait</span>}</div><div style={{fontSize:12,color:viol?C.red:C.green}}>{viol?`✗ Protocol NOT followed${e.whyNot?` — ${e.whyNot}`:""}`:e.protocolFollowed==="Yes"?"✓ Protocol followed":e.protocolFollowed==="No protocol"?"⚠ No protocol on file":"Protocol status unclear"}</div>{e.admitted&&e.admitted!=="N/A"&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>Admission: {e.admitted}</div>}</div>}
+          {e.erVisit==="Yes"&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:viol?`${C.red}0c`:`${C.green}0a`,border:`1px solid ${viol?C.red+"28":C.green+"25"}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:4}}><span style={{fontSize:13,fontWeight:500}}>🏥 {e.hospital||"ER Visit"}</span>{fmtWait(e.waitHours)&&<span style={{fontSize:11,color:C.muted}}>{fmtWait(e.waitHours)}</span>}</div><div style={{fontSize:12,color:viol?C.red:C.green}}>{viol?`✗ Protocol NOT followed${e.whyNot?` — ${e.whyNot}`:""}`:e.protocolFollowed==="Yes"?"✓ Protocol followed":e.protocolFollowed==="No protocol"?"⚠ No protocol on file":"Protocol status unclear"}</div>{e.admitted&&e.admitted!=="N/A"&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>Admission: {e.admitted}</div>}</div>}
           {e.outcome72h&&<div style={{marginTop:8,padding:"8px 12px",borderRadius:8,background:`${C.green}0a`,border:`1px solid ${C.green}25`,fontSize:12,color:C.green}}>72h outcome: {e.outcome72h}</div>}
           {e.notes&&<div style={{marginTop:10,fontSize:12,fontStyle:"italic",color:C.muted,borderLeft:`2px solid ${C.amber}50`,paddingLeft:10,lineHeight:1.6}}>"{e.notes}"</div>}
           {e.ongoing&&onResolve&&(
