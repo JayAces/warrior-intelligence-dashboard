@@ -1157,8 +1157,10 @@ function CommunityView(){
 function AccountabilityView(){
   const violations=allViolations();
   const erVisits=RAW.filter(d=>d.erVisit==="Yes");
-  const waits=erVisits.filter(d=>d.waitHours>0);
-  const avgWait=waits.length?(waits.reduce((s,d)=>s+d.waitHours,0)/waits.length).toFixed(1):"—";
+  // Wait times are mixed numeric/string — count recorded vs not
+  const recordedWaits=erVisits.filter(d=>d.waitHours&&d.waitHours!==0&&d.waitHours!=="0");
+  const numericWaits=recordedWaits.filter(d=>typeof d.waitHours==="number"&&d.waitHours>0);
+  const avgWait=numericWaits.length?(numericWaits.reduce((s,d)=>s+d.waitHours,0)/numericWaits.length).toFixed(1):null;
   return(
     <div className="fade">
       <div style={{background:`${C.red}08`,border:`1px solid ${C.red}20`,borderRadius:14,padding:20,marginBottom:20}}>
@@ -1168,7 +1170,7 @@ function AccountabilityView(){
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
         <Pill label="ER Visits" value={erVisits.length} accent={C.blue}/>
         <Pill label="Violation Rate" value={`${Math.round(violations.length/erVisits.length*100)}%`} accent={C.red} sub={`${violations.length} incidents`}/>
-        <Pill label="Avg Wait" value={`${avgWait}h`} accent={C.amber}/>
+        <Pill label="Avg Wait" value={avgWait?`${avgWait}h`:`${recordedWaits.length} logged`} accent={C.amber} sub={avgWait?`${recordedWaits.length} recorded`:null}/>
       </div>
       <div style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:22}}>
         <div style={{fontFamily:"Syne",fontWeight:700,marginBottom:3}}>Documented Protocol Violations</div>
@@ -1179,7 +1181,7 @@ function AccountabilityView(){
               <span style={{fontWeight:500,fontSize:14}}>Warrior — {v.community}</span>
               <span style={{fontSize:11,color:C.muted}}>{v.submitted}</span>
             </div>
-            <div style={{fontSize:13,marginBottom:4}}><span style={{color:C.red}}>🏥 {v.hospital||"Unknown"} </span><span style={{color:C.muted}}>· {v.waitHours>0?`${v.waitHours}h wait`:"wait not recorded"} · Pain {v.pain}/10</span></div>
+            <div style={{fontSize:13,marginBottom:4}}><span style={{color:C.red}}>🏥 {v.hospital||"Unknown"} </span><span style={{color:C.muted}}>· {fmtWait(v.waitHours)||"wait not recorded"} · Pain {v.pain}/10</span></div>
             {v.whyNot&&<div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Reason given: {v.whyNot}</div>}
             {v.notes&&<div style={{marginTop:6,fontSize:12,fontStyle:"italic",color:C.amber,borderLeft:`2px solid ${C.amber}40`,paddingLeft:10}}>"{v.notes}"</div>}
           </div>
