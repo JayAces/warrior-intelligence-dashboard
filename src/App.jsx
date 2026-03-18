@@ -25,7 +25,7 @@ async function fetchWarriorData() {
     temp: r.temperature ? parseFloat(r.temperature) : null,
     erVisit: r.er_visit || "",
     hospital: r.hospital || "",
-    waitHours: r.wait_hours || 0,
+    waitHours: r.wait_hours != null ? r.wait_hours : 0,
     triageToTreatment: r.triage_to_treatment_hours ? parseFloat(r.triage_to_treatment_hours) : null,
     protocolFollowed: r.protocol_followed || "",
     whyNot: r.why_not_followed || "",
@@ -143,7 +143,18 @@ function findMatches(query){
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const TS={"Cold weather exposure":"Cold Weather","High stress situation":"High Stress","Lack of sleep":"Lack of Sleep","Dehydration (missed water intake)":"Dehydration","Menstrual cycle":"Menstrual Cycle","Illness (cold, flu, infection)":"Illness/Infection","Physical overexertion":"Overexertion","Changed altitude/air pressure":"Altitude/Pressure","Skipped medication":"Skipped Medication"};
 const avgPain=e=>{const v=e.map(x=>x.pain).filter(p=>p>0);return v.length?(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1):"—";};
-const fmtWait=w=>{if(!w||w===0)return null;if(typeof w==="string"&&w.includes("min"))return w;if(typeof w==="string"&&(w.includes("hour")||w.includes("h")))return w;const n=parseFloat(w);if(isNaN(n)||n===0)return null;if(n<1)return`${Math.round(n*60)} min wait`;return`${n}h wait`;}; 
+const fmtWait=w=>{
+  if(!w||w===0||w==="0")return null;
+  if(typeof w==="string"){
+    if(w.includes("min"))return w;
+    if(w.includes("hour"))return w;
+    const n=parseFloat(w);
+    if(!isNaN(n)&&n>0){if(n<1)return`${Math.round(n*60)} min wait`;return`${n}h wait`;}
+    return w; // return as-is for strings like "31-60 mins"
+  }
+  if(typeof w==="number"&&w>0){if(w<1)return`${Math.round(w*60)} min wait`;return`${w}h wait`;}
+  return null;
+}; 
 const normPC=s=>{if(!s)return s;return s.replace(/Worse thn usual/i,"Worse than usual").replace(/Better thn usual/i,"Better than usual");}; 
 const countT=entries=>{const c={};entries.forEach(e=>e.triggered.forEach(t=>{const s=TS[t]||t;c[s]=(c[s]||0)+1;}));return Object.entries(c).sort((a,b)=>b[1]-a[1]);};
 const painCol=p=>p>=8?"#e85555":p>=5?"#f0a500":"#4ade80";
@@ -845,10 +856,168 @@ function ProtocolBuilder({entries, onClose}){
   );
 }
 
+// ── SHOW ED MODE ─────────────────────────────────────────────────────────────
+function EDMode({entries, onClose}){
+  const sorted=[...entries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
+  const latest=sorted[sorted.length-1];
+  const triggerCounts=countT(entries);
+  const topTriggers=triggerCounts.slice(0,3).map(([t])=>t);
+  const violations=entries.filter(e=>e.erVisit==="Yes"&&(e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"))));
+  const avgP=entries.map(e=>e.pain).filter(p=>p>0);
+  const avg=avgP.length?(avgP.reduce((a,b)=>a+b,0)/avgP.length).toFixed(1):"—";
+  const today=new Date().toISOString().slice(0,10);
+  const homeFailed=latest.working==="Not at all"||latest.working==="A little";
+  const hasMenstrual=entries.some(e=>e.triggered&&e.triggered.some(t=>t.includes("Menstrual")));
+
+  // Stability
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++) gaps.push(days(sorted[i-1].submitted,sorted[i].submitted));
+  const daysSinceLast=days(sorted[sorted.length-1].submitted,today);
+  const pains=sorted.map(e=>e.pain).filter(p=>p>0);
+  const firstHalf=pains.slice(0,Math.floor(pains.length/2));
+  const secondHalf=pains.slice(Math.floor(pains.length/2));
+  const avgFirst=firstHalf.length?firstHalf.reduce((a,b)=>a+b,0)/firstHalf.length:5;
+  const avgSecond=secondHalf.length?secondHalf.reduce((a,b)=>a+b,0)/secondHalf.length:5;
+  const painDelta=avgSecond-avgFirst;
+  const avgGap=gaps.length?gaps.reduce((a,b)=>a+b,0)/gaps.length:30;
+  const recentERRate=entries.slice(-3).filter(e=>e.erVisit==="Yes").length/Math.min(entries.length,3);
+  let score=60;
+  if(painDelta<-1)score+=15;else if(painDelta>1)score-=15;
+  if(avgGap>21)score+=15;else if(avgGap<7)score-=15;
+  if(!latest.ongoing)score+=10;else score-=10;
+  if(recentERRate<0.33)score+=10;else if(recentERRate>0.66)score-=10;
+  if(!latest.ongoing&&daysSinceLast>30)score+=20;
+  else if(!latest.ongoing&&daysSinceLast>14)score+=10;
+  score=Math.max(10,Math.min(95,score));
+  const statusLabel=score>=65?"STABLE":score>=40?"WATCHFUL":"HIGH LOAD";
+  const statusColor=score>=65?C.green:score>=40?C.amber:C.red;
+
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#fff",zIndex:200,overflowY:"auto",padding:"32px 28px",color:"#111",fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}}>
+
+      {/* Close button */}
+      <button onClick={onClose} style={{position:"fixed",top:16,right:16,background:"#f3f4f6",border:"none",borderRadius:8,padding:"8px 16px",fontSize:13,cursor:"pointer",color:"#374151",fontWeight:500,zIndex:201}}>✕ Exit ED Mode</button>
+
+      {/* Header */}
+      <div style={{borderBottom:"3px solid #990000",paddingBottom:16,marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#888",marginBottom:4}}>Human Intelligence Infrastructure · Warrior Intelligence Project</div>
+          <div style={{fontSize:28,fontWeight:800,color:"#0f0f0f",letterSpacing:-0.5,lineHeight:1.1}}>Hii Clinical Intelligence Brief</div>
+          <div style={{fontSize:14,color:"#555",marginTop:6}}>Warrior ID: <strong>{entries[0].warriorId}</strong> &nbsp;·&nbsp; {today} &nbsp;·&nbsp; {entries.length} report{entries.length!==1?"s":""} on record</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+          <div style={{padding:"12px 24px",borderRadius:8,fontWeight:800,fontSize:18,letterSpacing:2,textTransform:"uppercase",background:`${statusColor}15`,color:statusColor,border:`2px solid ${statusColor}50`}}>{statusLabel}</div>
+          <div style={{fontSize:10,color:"#aaa",textAlign:"right"}}>warrior-intelligence-dashboard.vercel.app</div>
+        </div>
+      </div>
+
+      {/* Clinical Request — FIRST AND PROMINENT */}
+      <div style={{background:"#f0f9ff",border:"2px solid #0ea5e9",borderRadius:12,padding:"20px 24px",marginBottom:28}}>
+        <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#0369a1",fontWeight:700,marginBottom:10}}>◈ Clinical Request</div>
+        <div style={{fontSize:18,fontWeight:700,color:"#0c4a6e",lineHeight:1.6,marginBottom:12}}>
+          Please initiate established Sickle Cell pain protocol immediately.
+        </div>
+        <div style={{fontSize:15,color:"#0c4a6e",lineHeight:1.7}}>
+          Home management has been attempted and {homeFailed?"has reached its limit.":"is supplementary to this visit."}<br/>
+          Community data from 78 Warriors shows patients who are admitted report outcomes <strong>2.5× better</strong> than those treated and released.
+        </div>
+        {violations.length>0&&(
+          <div style={{marginTop:12,padding:"10px 14px",background:"#fff1f2",border:"1px solid #fecdd3",borderRadius:8,fontSize:14,color:"#7f1d1d",fontWeight:600}}>
+            ⚠ {violations.length} documented protocol violation{violations.length>1?"s":""} on record at prior visits.
+          </div>
+        )}
+      </div>
+
+      {/* Three columns */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:20,marginBottom:28}}>
+
+        {/* Compass */}
+        <div style={{border:"1.5px solid #e5e7eb",borderRadius:10,padding:18}}>
+          <div style={{fontSize:10,letterSpacing:2.5,textTransform:"uppercase",color:"#990000",fontWeight:700,marginBottom:12,paddingBottom:6,borderBottom:"1px solid #fce8e8"}}>◈ Compass</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div><div style={{fontSize:11,color:"#888"}}>Crisis reports on record</div><div style={{fontSize:20,fontWeight:800,color:"#111"}}>{entries.length}</div></div>
+            <div><div style={{fontSize:11,color:"#888"}}>Average pain level</div><div style={{fontSize:20,fontWeight:800,color:"#dc2626"}}>{avg}/10</div></div>
+            <div><div style={{fontSize:11,color:"#888"}}>Pain (last report)</div><div style={{fontSize:20,fontWeight:800,color:"#dc2626"}}>{latest.pain}/10</div></div>
+            <div><div style={{fontSize:11,color:"#888"}}>Stability window</div><div style={{fontSize:16,fontWeight:700,color:"#111"}}>{daysSinceLast} days</div></div>
+            <div><div style={{fontSize:11,color:"#888"}}>Current status</div><div style={{fontSize:13,fontWeight:600,color:latest.ongoing?"#dc2626":"#16a34a"}}>{latest.ongoing?"Active crisis":"Resolved"}</div></div>
+            {latest.hydrationOz&&<div><div style={{fontSize:11,color:"#888"}}>Pre-crisis hydration</div><div style={{fontSize:14,fontWeight:700,color:latest.hydrationOz<40?"#dc2626":latest.hydrationOz>=64?"#16a34a":"#d97706"}}>{latest.hydrationOz}oz</div></div>}
+          </div>
+        </div>
+
+        {/* Loop */}
+        <div style={{border:"1.5px solid #e5e7eb",borderRadius:10,padding:18}}>
+          <div style={{fontSize:10,letterSpacing:2.5,textTransform:"uppercase",color:"#990000",fontWeight:700,marginBottom:12,paddingBottom:6,borderBottom:"1px solid #fce8e8"}}>◈ Loop — Triggers</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {triggerCounts.slice(0,3).map(([t,count],i)=>(
+              <div key={t} style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:9,letterSpacing:1,textTransform:"uppercase",padding:"3px 8px",borderRadius:4,fontWeight:700,background:i===0?"#fef3c7":i===1?"#f1f5f9":"#f0fdf4",color:i===0?"#92400e":i===1?"#475569":"#166534",border:`1px solid ${i===0?"#fde68a":i===1?"#cbd5e1":"#bbf7d0"}`,flexShrink:0}}>{i===0?"Primary":i===1?"Secondary":"Emerging"}</span>
+                <span style={{fontSize:14,fontWeight:700,color:"#111"}}>{t}</span>
+                <span style={{fontSize:11,color:"#888",marginLeft:"auto"}}>{count}/{entries.length}</span>
+              </div>
+            ))}
+            {hasMenstrual&&<div style={{marginTop:6,padding:"8px 10px",background:"#fdf4ff",border:"1px solid #e9d5ff",borderRadius:6,fontSize:12,color:"#6b21a8",fontWeight:600}}>⚠ Menstrual cycle — documented trigger</div>}
+          </div>
+          {latest.treatment.length>0&&(
+            <div style={{marginTop:14,paddingTop:10,borderTop:"1px solid #f3f4f6"}}>
+              <div style={{fontSize:11,color:"#888",marginBottom:4}}>Home management attempted</div>
+              <div style={{fontSize:13,color:"#111",lineHeight:1.6}}>{latest.treatment.filter(t=>!t.includes("Nothing")).join(", ")||"—"}</div>
+              {latest.working&&<div style={{fontSize:12,color:homeFailed?"#dc2626":"#16a34a",fontWeight:600,marginTop:4}}>Response: {latest.working}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Safeguard */}
+        <div style={{border:"1.5px solid #e5e7eb",borderRadius:10,padding:18}}>
+          <div style={{fontSize:10,letterSpacing:2.5,textTransform:"uppercase",color:"#990000",fontWeight:700,marginBottom:12,paddingBottom:6,borderBottom:"1px solid #fce8e8"}}>◈ Safeguard</div>
+          {entries.filter(e=>e.erVisit==="Yes").length>0?(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {entries.filter(e=>e.erVisit==="Yes").map((e,i)=>{
+                const viol=e.protocolFollowed==="No"||(e.whyNot&&e.whyNot.toLowerCase().includes("medical team"));
+                return(
+                  <div key={i} style={{padding:"8px 10px",borderRadius:6,background:viol?"#fff1f2":"#f0fdf4",border:`1px solid ${viol?"#fecdd3":"#bbf7d0"}`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#111"}}>{e.hospital||"ER Visit"}</div>
+                    <div style={{fontSize:11,color:"#555"}}>{e.submitted}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:viol?"#dc2626":"#16a34a",marginTop:2}}>{viol?"✗ Protocol NOT followed":"✓ Protocol followed"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ):(
+            <div style={{fontSize:13,color:"#888"}}>No ER visits on record.</div>
+          )}
+          <div style={{marginTop:14,paddingTop:10,borderTop:"1px solid #f3f4f6",fontSize:11,color:"#555",lineHeight:1.6}}>
+            Data verified by Sickle Cell Warriors of Buffalo · Community evidence base
+          </div>
+        </div>
+      </div>
+
+      {/* Cost context */}
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"14px 18px",marginBottom:24,fontSize:13,color:"#78350f",lineHeight:1.7}}>
+        <strong>Systemic Risk & Cost Context:</strong> Shah et al. (2020) estimates mean annual SCD-related costs at <strong>~$59,000 per patient</strong> — largely driven by ineffective treat-and-release cycles. Protocol adherence at this visit directly affects that trajectory.
+      </div>
+
+      {/* Footer */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:14,borderTop:"1px solid #e5e7eb"}}>
+        <div style={{fontSize:11,color:"#aaa",lineHeight:1.8}}>
+          Warrior Intelligence Project · Sickle Cell Warriors of Buffalo<br/>
+          info@kindredcompassholdings.com · 716-818-2338<br/>
+          warrior-intelligence-dashboard.vercel.app
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:12,color:"#C1A004",fontWeight:700,letterSpacing:.5}}>Our Pain. Our Data. Our Power.</div>
+          <div style={{fontSize:9,color:"#bbb",marginTop:2}}>© {new Date().getFullYear()} Jason Robert Moore. All Rights Reserved. Human Intelligence Infrastructure (Hii) Framework.</div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ── WARRIOR PROFILE ───────────────────────────────────────────────────────────
 function WarriorProfile({entries,onReset}){
   const [localEntries,setLocalEntries]=useState(entries);
   const [showProtocolBuilder,setShowProtocolBuilder]=useState(false);
+  const [showEDMode,setShowEDMode]=useState(false);
   const sorted=[...localEntries].sort((a,b)=>new Date(a.submitted)-new Date(b.submitted));
   const topT=countT(localEntries).slice(0,3).map(([t])=>t);
   const erCount=localEntries.filter(e=>e.erVisit==="Yes").length;
@@ -874,6 +1043,7 @@ function WarriorProfile({entries,onReset}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
         <button onClick={onReset} style={{background:"none",border:"none",color:C.muted,fontSize:13,display:"flex",alignItems:"center",gap:6,padding:0}}>← Search again</button>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowEDMode(true)} style={{background:C.red,border:"none",borderRadius:8,padding:"7px 16px",color:"#fff",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>🏥 Show ED</button>
           <button onClick={()=>setShowProtocolBuilder(true)} style={{background:"none",border:`1px solid ${C.teal}50`,borderRadius:8,padding:"7px 16px",color:C.teal,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⚕ Build Protocol</button>
           <button onClick={()=>generateBrief(localEntries)} style={{background:"none",border:`1px solid ${C.amber}50`,borderRadius:8,padding:"7px 16px",color:C.amber,fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>⬇ Export Clinical Brief</button>
         </div>
@@ -896,7 +1066,8 @@ function WarriorProfile({entries,onReset}){
       </div>
       <div style={{fontSize:10,letterSpacing:2.5,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Crisis Timeline — oldest first</div>
       {sorted.map((e,i)=><Entry key={e.id} e={e} isLast={i===sorted.length-1} onResolve={handleResolve}/>)}
-      {showProtocolBuilder&&<ProtocolBuilder entries={localEntries} onClose={()=>setShowProtocolBuilder(false)}/>}
+      {showProtocolBuilder&&<ProtocolBuilder entries={localEntries} onClose={()=>setShowProtocolBuilder(false)}/> }
+      {showEDMode&&<EDMode entries={localEntries} onClose={()=>setShowEDMode(false)}/>}
     </div>
   );
 }
