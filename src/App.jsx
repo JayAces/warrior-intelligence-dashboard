@@ -1104,6 +1104,220 @@ function TimelineView(){
   );
 }
 
+// ── GEOGRAPHIC INTELLIGENCE ───────────────────────────────────────────────────
+const HOSPITAL_STATE_MAP = {
+  // Texas
+  "memorial hermann":             "Texas",
+  "ut southwestern":              "Texas",
+  "texas children":               "Texas",
+  "methodist":                    "Texas",
+  // Georgia
+  "doctor's hospital augusta":    "Georgia",
+  "doctors hospital augusta":     "Georgia",
+  "grady":                        "Georgia",
+  // Nevada
+  "umc":                          "Nevada",
+  // Delaware
+  "bay health":                   "Delaware",
+  // mississippi
+  "gulfport memorial":            "Mississippi",
+  // arkansas
+  "st bernard":                   "Arkansas",
+  "st. bernard":                  "Arkansas",
+  // connecticut
+  "bridgeport hospital":          "Connecticut",
+  // florida
+  "nemours":                      "Florida",
+  "advent health east orlando":   "Florida",
+  "advent health lake nona":      "Florida",
+  "advent":                       "Florida",
+  "baycare":                      "Florida",
+  // california
+  "rady children":                "California",
+  "ucsf":                         "California",
+  // new york
+  "new york presbyterian queens": "New York",
+  "new york presbyterian":        "New York",
+  "nyp":                          "New York",
+  "montefiore":                   "New York",
+  "bellevue":                     "New York",
+  // indiana
+  "community north":              "Indiana",
+  "riley":                        "Indiana",
+  "eskenazi":                     "Indiana",
+  // massachusetts
+  "southshore hospital":          "Massachusetts",
+  "south shore":                  "Massachusetts",
+  "brigham":                      "Massachusetts",
+  // texas (additional)
+  "st davids":                    "Texas",
+  "st. davids":                   "Texas",
+  // maryland
+  "johns hopkins":                "Maryland",
+  // north carolina
+  "duke":                         "North Carolina",
+  "unc":                          "North Carolina",
+  // ohio
+  "cleveland clinic":             "Ohio",
+  "nationwide children":          "Ohio",
+  // illinois
+  "rush":                         "Illinois",
+  "northwestern":                 "Illinois",
+  "stroger":                      "Illinois",
+  // virginia
+  "inova":                        "Virginia",
+  "vcu":                          "Virginia",
+  // pennsylvania
+  "temple":                       "Pennsylvania",
+  "penn medicine":                "Pennsylvania",
+  "upmc":                         "Pennsylvania",
+  // michigan
+  "children's detroit":           "Michigan",
+  "henry ford":                   "Michigan",
+  // washington dc
+  "children's national":          "DC",
+  "howard university":            "DC",
+  // international
+  "queen elizabeth university":   "International",
+  "meilahti":                     "International",
+  "meilahti hospital":            "International",
+  "helsinki":                     "International",
+};
+
+function inferRegion(hospital) {
+  if (!hospital) return null;
+  const h = hospital.toLowerCase();
+  for (const [key, state] of Object.entries(HOSPITAL_STATE_MAP)) {
+    if (h.includes(key)) return state;
+  }
+  return null;
+}
+
+function buildGeoData(data) {
+  // Only ER visits with a hospital name and recorded wait time
+  const erWithHospital = data.filter(d =>
+    d.erVisit === "Yes" && d.hospital && d.waitHours != null
+  );
+
+  const regionMap = {};
+  erWithHospital.forEach(d => {
+    const region = inferRegion(d.hospital);
+    if (!region) return;
+    if (!regionMap[region]) regionMap[region] = { waitTimes: [], count: 0, reports: 0 };
+    if (typeof d.waitHours === "number" && d.waitHours > 0) {
+      regionMap[region].waitTimes.push(d.waitHours);
+    }
+    regionMap[region].count++;
+  });
+
+  // Total reports per region (not just ER)
+  data.forEach(d => {
+    const region = inferRegion(d.hospital);
+    if (region && regionMap[region]) regionMap[region].reports++;
+  });
+
+  return Object.entries(regionMap)
+    .map(([region, v]) => ({
+      region,
+      avgWait: v.waitTimes.length
+        ? parseFloat((v.waitTimes.reduce((a,b) => a+b, 0) / v.waitTimes.length).toFixed(1))
+        : null,
+      erCount: v.count,
+      waitSampleSize: v.waitTimes.length,
+    }))
+    .filter(r => r.avgWait !== null)
+    .sort((a, b) => b.avgWait - a.avgWait);
+}
+
+function GeoIntelSection({ data }) {
+  const geoData = buildGeoData(data);
+  if (geoData.length < 2) return null;
+
+  const maxWait = Math.max(...geoData.map(r => r.avgWait));
+  // Community overall avg
+  const allWaits = data.filter(d => d.erVisit==="Yes" && typeof d.waitHours==="number" && d.waitHours>0);
+  const communityAvg = allWaits.length
+    ? parseFloat((allWaits.reduce((s,d)=>s+d.waitHours,0)/allWaits.length).toFixed(1))
+    : null;
+
+  // Color by wait severity
+  function barColor(wait) {
+    if (wait >= 4)  return C.red;
+    if (wait >= 2)  return C.amber;
+    return C.green;
+  }
+
+  return (
+    <div style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:22,marginTop:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontFamily:"Syne",fontWeight:700,marginBottom:3}}>Geographic Intelligence</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Average ER wait time by state · Warriors who visited an ER</div>
+        </div>
+        {communityAvg && (
+          <div style={{background:`${C.amber}10`,border:`1px solid ${C.amber}30`,borderRadius:8,padding:"6px 14px",textAlign:"center",flexShrink:0}}>
+            <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:C.amber,marginBottom:1}}>Community Avg</div>
+            <div style={{fontFamily:"Syne",fontWeight:800,fontSize:18,color:C.amber}}>{communityAvg}h</div>
+          </div>
+        )}
+      </div>
+
+      {/* Legend */}
+      <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+        {[["< 2h — Within window",C.green],["2–4h — Dead zone",C.amber],["4h+ — Cascade risk",C.red]].map(([label,color])=>(
+          <div key={label} style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:10,height:10,borderRadius:2,background:color,flexShrink:0}}/>
+            <span style={{fontSize:11,color:C.muted}}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Bars */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {geoData.map(r => {
+          const color = barColor(r.avgWait);
+          const barPct = Math.round((r.avgWait / Math.max(maxWait, 6)) * 100);
+          const isIntl = r.region === "International";
+          return (
+            <div key={r.region}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"baseline"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13,color:C.text,fontWeight:500}}>{r.region}</span>
+                  {isIntl && <span style={{fontSize:10,background:`${C.teal}18`,color:C.teal,padding:"1px 6px",borderRadius:4,letterSpacing:.5}}>INTL</span>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:11,color:C.muted}}>{r.waitSampleSize} visit{r.waitSampleSize!==1?"s":""}</span>
+                  <span style={{fontFamily:"Syne",fontWeight:700,fontSize:14,color,minWidth:36,textAlign:"right"}}>{r.avgWait}h</span>
+                </div>
+              </div>
+              <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden",position:"relative"}}>
+                {/* Therapeutic window marker at ~2h */}
+                <div style={{position:"absolute",left:`${Math.round(2/Math.max(maxWait,6)*100)}%`,top:0,bottom:0,width:1,background:`${C.amber}50`,zIndex:1}}/>
+                {/* Dead zone marker at 4h */}
+                <div style={{position:"absolute",left:`${Math.round(4/Math.max(maxWait,6)*100)}%`,top:0,bottom:0,width:1,background:`${C.red}50`,zIndex:1}}/>
+                <div style={{
+                  height:"100%",
+                  width:`${barPct}%`,
+                  background:color,
+                  borderRadius:4,
+                  transition:"width 1s ease",
+                  opacity:0.85
+                }}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Insight callout */}
+      <div style={{marginTop:18,padding:"12px 14px",background:`${C.red}08`,border:`1px solid ${C.red}20`,borderRadius:8,fontSize:12,color:"rgba(255,255,255,0.65)",lineHeight:1.75}}>
+        <span style={{color:C.red,fontWeight:600}}>Therapeutic Window Context: </span>
+        Warriors who reach treatment within 2 hours report the highest effectiveness rates. Past the 4-hour mark, the inflammatory cascade outpaces standard dosing. States above the red line represent regions where hospitals are systematically missing the treatment window.
+      </div>
+    </div>
+  );
+}
+
 // ── COMMUNITY VIEW ────────────────────────────────────────────────────────────
 function CommunityView(){
   const triggers=countT(RAW);
@@ -1149,6 +1363,7 @@ function CommunityView(){
           </div>}
         </div>
       </div>
+      <GeoIntelSection data={RAW}/>
     </div>
   );
 }
