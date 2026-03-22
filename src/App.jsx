@@ -175,6 +175,29 @@ const css=`
   button{cursor:pointer;font-family:'IBM Plex Sans',sans-serif;}
 `;
 
+// ── PRINT OVERLAY ────────────────────────────────────────────────────────────
+// Global print state — avoids prop drilling
+let _setPrintHTML = null;
+function showPrintDoc(html){
+  if(_setPrintHTML) _setPrintHTML(html);
+}
+
+function PrintOverlay(){
+  const [html,setHTML]=useState(null);
+  _setPrintHTML=setHTML;
+  if(!html) return null;
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#fff",zIndex:300,overflowY:"auto"}}>
+      <div style={{position:"fixed",top:0,left:0,right:0,background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"10px 16px",display:"flex",gap:10,alignItems:"center",zIndex:301,boxShadow:"0 2px 8px rgba(0,0,0,0.08)"}}>
+        <button onClick={()=>window.print()} style={{background:"#990000",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:600,cursor:"pointer"}}>⬇ Save / Print</button>
+        <button onClick={()=>setHTML(null)} style={{background:"none",border:"1px solid #d1d5db",borderRadius:8,padding:"9px 16px",fontSize:13,cursor:"pointer",color:"#374151"}}>✕ Close</button>
+        <span style={{fontSize:11,color:"#888",marginLeft:4}}>Use your browser's share or print to save as PDF</span>
+      </div>
+      <div style={{marginTop:52}} dangerouslySetInnerHTML={{__html:html}}/>
+    </div>
+  );
+}
+
 // ── MICRO COMPONENTS ──────────────────────────────────────────────────────────
 const Tag=({label,color})=>(<span style={{display:"inline-block",fontSize:11,padding:"2px 9px",borderRadius:20,background:`${color}18`,color,border:`1px solid ${color}28`,marginRight:4,marginBottom:4}}>{label}</span>);
 const Pill=({label,value,accent,sub})=>(<div style={{textAlign:"center",padding:"14px 16px",background:C.surf2,borderRadius:12,border:`1px solid ${C.border}`,borderTop:`2px solid ${accent}`}}><div style={{fontSize:28,fontFamily:"Syne",fontWeight:800,color:accent,lineHeight:1}}>{value}</div><div style={{fontSize:11,color:C.muted,marginTop:3,letterSpacing:.4}}>{label}</div>{sub&&<div style={{fontSize:10,color:C.muted,marginTop:1}}>{sub}</div>}</div>);
@@ -608,22 +631,12 @@ function generateBrief(entries){
 </body>
 </html>`;
 
-  const win=window.open("","_blank");
-  if(win){
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    setTimeout(()=>{ try{win.print();}catch(e){} },900);
-  } else {
-    // Fallback for mobile popup blockers — open in same tab
-    const blob=new Blob([html],{type:"text/html"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.target="_blank";
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }
+  // Extract just the body content for inline rendering
+  const bodyMatch=html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const styleMatch=html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const inlineHTML=(styleMatch?`<style>${styleMatch[1]}</style>`:"")+
+    (bodyMatch?bodyMatch[1]:html);
+  showPrintDoc(inlineHTML);
 }
 
 // ── PROTOCOL BUILDER ─────────────────────────────────────────────────────────
@@ -791,21 +804,11 @@ function ProtocolBuilder({entries, onClose}){
 </body>
 </html>`;
 
-    const win=window.open("","_blank");
-    if(win){
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      setTimeout(()=>{ try{win.print();}catch(e){} },900);
-    } else {
-      const blob=new Blob([html],{type:"text/html"});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url;
-      a.target="_blank";
-      a.click();
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }
+    const bodyMatch=html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const styleMatch=html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+    const inlineHTML=(styleMatch?`<style>${styleMatch[1]}</style>`:"")+
+      (bodyMatch?bodyMatch[1]:html);
+    showPrintDoc(inlineHTML);
   }
 
   const inputStyle={width:"100%",background:C.surf,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"'IBM Plex Sans',sans-serif"};
@@ -1235,6 +1238,7 @@ export default function App(){
   return(
     <>
       <style>{css}</style>
+      <PrintOverlay/>
       <div style={{minHeight:"100vh",background:C.bg}}>
         <div style={{borderBottom:`1px solid ${C.border}`,padding:"0 24px",position:"sticky",top:0,background:C.bg,zIndex:10}}>
           <div style={{maxWidth:860,margin:"0 auto"}}>
